@@ -17,7 +17,7 @@
       --border:    #2a1040;
       --border2:   #1a0830;
       --purple:    #9a60c8;
-      --purple-dim:#5a2a7a;
+      --purple-dim:#7a4a9a;
       --gold:      #e8b830;
       --gold-dim:  #8a6010;
       --red:       #cc4444;
@@ -25,10 +25,10 @@
       --green:     #44aa55;
       --yellow:    #bbaa22;
       --blue:      #4488cc;
-      --text-hi:   #e0d0f0;
-      --text-mid:  #a888c8;
-      --text-lo:   #604878;
-      --text-dim:  #38204a;
+      --text-hi:   #e8d8f8;
+      --text-mid:  #c0a0e0;
+      --text-lo:   #9070a8;
+      --text-dim:  #6a4888;
     }
 
     body {
@@ -67,7 +67,7 @@
     }
     #era-display {
       font-size: 11px;
-      color: var(--text-lo);
+      color: var(--text-mid);
       letter-spacing: 1px;
     }
 
@@ -75,7 +75,7 @@
     #controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     #controls .label {
       font-size: 10px;
-      color: var(--text-lo);
+      color: var(--text-mid);
       letter-spacing: 2px;
       text-transform: uppercase;
       margin-right: 2px;
@@ -83,7 +83,7 @@
     #controls button {
       background: #150020;
       border: 1px solid var(--border);
-      color: var(--text-lo);
+      color: var(--text-mid);
       font-family: 'Courier New', monospace;
       font-size: 11px;
       padding: 4px 13px;
@@ -98,7 +98,7 @@
 
     #save-status {
       font-size: 10px;
-      color: var(--text-dim);
+      color: var(--text-lo);
       margin-left: 4px;
       letter-spacing: 1px;
     }
@@ -123,9 +123,9 @@
 
     /* Section titles */
     .section-title {
-      font-size: 10px;
+      font-size: 11px;
       letter-spacing: 3px;
-      color: var(--purple-dim);
+      color: var(--text-mid);
       text-transform: uppercase;
       margin-bottom: 14px;
       padding-bottom: 6px;
@@ -138,7 +138,7 @@
       content: '';
       display: inline-block;
       width: 3px; height: 12px;
-      background: var(--purple-dim);
+      background: var(--purple);
       border-radius: 1px;
     }
 
@@ -209,10 +209,10 @@
       border: 1px solid;
       text-transform: uppercase;
     }
-    .tag-level  { color: #8870b8; border-color: #2a1840; background: #180828; }
-    .tag-state-hunt   { color: #cc4444; border-color: #4a1010; background: #1a0808; }
-    .tag-state-flee   { color: #4488cc; border-color: #101840; background: #080818; }
-    .tag-state-explore{ color: #446644; border-color: #102010; background: #081008; }
+    .tag-level  { color: #b090e0; border-color: #3a2060; background: #180828; }
+    .tag-state-hunt   { color: #e05555; border-color: #5a1515; background: #1a0808; }
+    .tag-state-flee   { color: #55aaee; border-color: #153060; background: #080818; }
+    .tag-state-explore{ color: #66bb77; border-color: #154020; background: #081008; }
 
     /* HP bar */
     .hp-track {
@@ -240,11 +240,11 @@
       gap: 1px;
     }
     .stat-chip .val { font-size: 13px; color: var(--text-hi); letter-spacing: 0.5px; }
-    .stat-chip .lbl { font-size: 9px;  color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; }
+    .stat-chip .lbl { font-size: 10px; color: var(--text-lo); letter-spacing: 1px; text-transform: uppercase; }
 
     .hero-hp-label {
-      font-size: 10px;
-      color: var(--text-lo);
+      font-size: 11px;
+      color: var(--text-mid);
       text-align: right;
       margin-bottom: 4px;
     }
@@ -264,7 +264,7 @@
       text-align: center;
       flex-shrink: 0;
     }
-    .threat-name { font-size: 13px; color: var(--text-mid); flex: 1; }
+    .threat-name { font-size: 13px; color: var(--text-hi); flex: 1; }
     .threat-bar-wrap { width: 60px; }
     .threat-bar-track { height: 4px; background: #1a0a28; border-radius: 1px; }
     .threat-bar-fill  { height: 100%; background: #882233; border-radius: 1px; }
@@ -279,7 +279,7 @@
     }
     .mini-stat { display: flex; flex-direction: column; gap: 2px; }
     .mini-stat .mv { font-size: 20px; color: var(--text-hi); line-height: 1; }
-    .mini-stat .ml { font-size: 9px;  color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; }
+    .mini-stat .ml { font-size: 10px; color: var(--text-lo); letter-spacing: 1px; text-transform: uppercase; }
 
     /* ── World stats ── */
     .world-stat-row {
@@ -290,7 +290,7 @@
       border-bottom: 1px solid var(--border2);
     }
     .world-stat-row:last-child { border-bottom: none; }
-    .ws-label { font-size: 12px; color: var(--text-lo); }
+    .ws-label { font-size: 13px; color: var(--text-mid); }
     .ws-val   { font-size: 14px; color: var(--text-hi); letter-spacing: 0.5px; }
     .ws-val.highlight { color: var(--gold); }
 
@@ -310,19 +310,124 @@
     }
     .log-entry:last-child { border-bottom: none; }
     .log-yr {
-      font-size: 9px;
-      color: var(--text-dim);
+      font-size: 10px;
+      color: var(--text-lo);
       letter-spacing: 1px;
       flex-shrink: 0;
-      min-width: 28px;
+      min-width: 32px;
     }
-    .log-icon { font-size: 11px; flex-shrink: 0; }
-    .log-msg  { color: var(--text-lo); flex: 1; }
-    .log-entry.combat  .log-msg { color: #cc5555; }
-    .log-entry.loot    .log-msg { color: #c8a030; }
-    .log-entry.level   .log-msg { color: #4488cc; }
-    .log-entry.death   .log-msg { color: #772233; }
-    .log-entry.explore .log-msg { color: #447744; }
+    .log-icon { font-size: 12px; flex-shrink: 0; }
+    .log-msg  { color: var(--text-mid); flex: 1; }
+    .log-entry.combat  .log-msg { color: #e05555; }
+    .log-entry.loot    .log-msg { color: #d4aa44; }
+    .log-entry.level   .log-msg { color: #5599dd; }
+    .log-entry.death   .log-msg { color: #aa3344; }
+    .log-entry.explore .log-msg { color: #55aa66; }
+
+    /* ── Rank tag ── */
+    .tag-rank { font-size: 9px; letter-spacing: 1px; padding: 1px 6px; border: 1px solid; text-transform: uppercase; }
+
+    /* ── Hero card selected state ── */
+    .hero-card { cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
+    .hero-card:hover { border-color: #3a2060 !important; }
+    .hero-card.selected { box-shadow: 0 0 0 2px var(--purple-dim); }
+
+    /* ── Hero detail panel ── */
+    #hero-detail { }
+    .detail-inner {
+      margin-top: 12px;
+      background: #0e0018;
+      border: 1px solid var(--purple-dim);
+      padding: 18px 20px 20px;
+      position: relative;
+      animation: slideDown 0.18s ease;
+    }
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .detail-close {
+      position: absolute; top: 12px; right: 14px;
+      background: none; border: 1px solid var(--border);
+      color: var(--text-lo); font-family: 'Courier New', monospace;
+      font-size: 10px; padding: 3px 10px; cursor: pointer;
+      letter-spacing: 1px;
+    }
+    .detail-close:hover { background: #1a0828; color: var(--text-mid); }
+
+    .detail-header {
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border2);
+    }
+    .detail-avatar {
+      width: 56px; height: 56px; border-radius: 2px; border: 2px solid;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; flex-shrink: 0;
+    }
+    .detail-identity { flex: 1; min-width: 0; }
+    .detail-name {
+      font-size: 18px; color: var(--text-hi);
+      letter-spacing: 1px; margin-bottom: 4px;
+    }
+    .detail-name.blonde { color: var(--gold); }
+    .detail-rank-line { font-size: 13px; margin-bottom: 6px; letter-spacing: 1px; }
+    .detail-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .detail-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    .detail-col { min-width: 0; }
+    .detail-section-label {
+      font-size: 9px; letter-spacing: 3px; color: var(--purple-dim);
+      text-transform: uppercase; margin-bottom: 10px;
+      border-bottom: 1px solid var(--border2); padding-bottom: 4px;
+    }
+
+    .detail-bar-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    }
+    .detail-bar-label { font-size: 10px; color: var(--text-lo); width: 20px; flex-shrink: 0; letter-spacing: 1px; }
+    .detail-bar-val   { font-size: 10px; color: var(--text-mid); width: 60px; text-align: right; flex-shrink: 0; }
+
+    .detail-next-rank {
+      font-size: 11px; color: var(--text-lo); margin-top: 4px; letter-spacing: 0.5px;
+    }
+
+    .detail-stat-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    }
+    .detail-stat {
+      background: var(--bg-card2); border: 1px solid var(--border2);
+      padding: 8px 6px; text-align: center; border-radius: 0;
+    }
+    .dsv { display: block; font-size: 18px; color: var(--text-hi); line-height: 1.2; }
+    .dsl { display: block; font-size: 9px;  color: var(--text-lo); letter-spacing: 1px; text-transform: uppercase; margin-top: 2px; }
+
+    /* Rank strip */
+    .rank-strip {
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .rank-pip {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 8px;
+      border: 1px solid var(--border2);
+      background: var(--bg-card2);
+      opacity: 0.45;
+    }
+    .rank-pip.done    { opacity: 0.7; }
+    .rank-pip.current { opacity: 1; background: #150020; }
+    .rank-pip-badge { font-size: 13px; width: 18px; text-align: center; flex-shrink: 0; }
+    .rank-pip-name  { font-size: 11px; color: var(--text-mid); flex: 1; }
+    .rank-pip-lvl   { font-size: 9px;  color: var(--text-dim); letter-spacing: 1px; }
+    .rank-pip.current .rank-pip-name { color: var(--text-hi); }
+    .rank-pip.current .rank-pip-lvl  { color: var(--text-lo); }
+
+    .detail-log { }
 
     /* ── Reset modal ── */
     #reset-modal {
@@ -348,13 +453,13 @@
       margin-bottom: 12px; font-weight: normal;
     }
     .modal-box p {
-      font-size: 12px; color: var(--text-lo);
+      font-size: 12px; color: var(--text-mid);
       margin-bottom: 22px; line-height: 1.7;
     }
     .modal-box .btn-row { display: flex; gap: 12px; justify-content: center; }
     .modal-box button {
       background: #150020; border: 1px solid var(--border);
-      color: var(--text-lo); font-family: 'Courier New', monospace;
+      color: var(--text-mid); font-family: 'Courier New', monospace;
       font-size: 11px; padding: 6px 20px; cursor: pointer;
       letter-spacing: 1px; text-transform: uppercase;
     }
@@ -388,6 +493,7 @@
   <div id="heroes-section">
     <div class="section-title">Heroes</div>
     <div id="heroes-grid"></div>
+    <div id="hero-detail"></div>
   </div>
 
   <!-- Threats + Stats -->
@@ -684,40 +790,69 @@
     combat:'⚔', loot:'✦', level:'★', death:'†', explore:'◈'
   };
 
+  // ── Rank system ────────────────────────────────────────────
+  const RANKS = [
+    { minLevel: 1,  name: 'Initiate',    badge: '◌', color: '#7060a0' },
+    { minLevel: 3,  name: 'Wanderer',    badge: '◈', color: '#6080b0' },
+    { minLevel: 5,  name: 'Veteran',     badge: '✦', color: '#50a070' },
+    { minLevel: 8,  name: 'Champion',    badge: '❖', color: '#b8901a' },
+    { minLevel: 12, name: 'Warlord',     badge: '⚔', color: '#c04020' },
+    { minLevel: 17, name: 'Deathlord',   badge: '☠', color: '#902090' },
+    { minLevel: 23, name: 'Archon',      badge: '✸', color: '#cc2244' },
+    { minLevel: 30, name: 'Undying',     badge: '★', color: '#e8b830' },
+  ];
+
+  function getRank(level) {
+    let rank = RANKS[0];
+    for (let r of RANKS) { if (level >= r.minLevel) rank = r; else break; }
+    return rank;
+  }
+
+  function getNextRank(level) {
+    for (let r of RANKS) { if (r.minLevel > level) return r; }
+    return null;
+  }
+
+  // ── Selected hero ──────────────────────────────────────────
+  let selectedHeroName = null;
+
   function renderAll() {
     renderHeroes();
     renderThreats();
     renderStats();
     renderLog();
     updateEra();
+    if (selectedHeroName) {
+      const h = W.heroes.find(h => h.name === selectedHeroName);
+      if (h) renderHeroDetail(h); else closeHeroDetail();
+    }
   }
 
   function renderHeroes() {
     const el = document.getElementById('heroes-grid');
     if (!el) return;
     if (!W.heroes.length) {
-      el.innerHTML = '<div style="color:#4a2a4a;font-size:12px;padding:8px 0;">No heroes remain in the world...</div>';
+      el.innerHTML = '<div style="color:#9070a8;font-size:13px;padding:8px 0;">No heroes remain in the world...</div>';
       return;
     }
     el.innerHTML = W.heroes.map(h => {
-      const pct   = Math.max(0, h.hp / h.maxhp);
-      const bar   = pct > 0.6 ? '#3a9a3a' : pct > 0.3 ? '#aaaa22' : '#aa2222';
-      const xpPct = Math.min(1, h.xp / (h.level * 15));
-      const stateKey   = h.state === 'hunt' ? 'hunt' : h.state === 'flee' ? 'flee' : 'explore';
+      const pct      = Math.max(0, h.hp / h.maxhp);
+      const bar      = pct > 0.6 ? '#3a9a3a' : pct > 0.3 ? '#aaaa22' : '#aa2222';
+      const xpPct    = Math.min(1, h.xp / (h.level * 15));
+      const stateKey = h.state === 'hunt' ? 'hunt' : h.state === 'flee' ? 'flee' : 'explore';
       const stateLabel = stateKey === 'hunt' ? '⚔ Hunting' : stateKey === 'flee' ? '↪ Fleeing' : '◈ Exploring';
       const stateClass = stateKey === 'hunt' ? 'tag-state-hunt' : stateKey === 'flee' ? 'tag-state-flee' : 'tag-state-explore';
       const cardClass  = h.isBlonde ? 'blonde' : stateKey === 'hunt' ? 'hunting' : stateKey === 'flee' ? 'fleeing' : 'exploring';
-      // avatar bg slightly tinted by hero color
-      const avatarBg = h.color + '22';
-      const avatarBorder = h.color + '55';
-      const initials = h.isBlonde ? '★' : h.name[0];
-      return `<div class="hero-card ${cardClass}">
+      const rank       = getRank(h.level);
+      const isSelected = h.name === selectedHeroName;
+      return `<div class="hero-card ${cardClass}${isSelected ? ' selected' : ''}" data-name="${h.name}" onclick="selectHero('${h.name.replace(/'/g,"\\'")}')">
         <div class="hero-card-top">
-          <div class="hero-avatar" style="background:${avatarBg};border-color:${avatarBorder};color:${h.color};">${initials}</div>
+          <div class="hero-avatar" style="background:${h.color}22;border-color:${h.color}55;color:${h.color};">${h.isBlonde ? '★' : h.name[0]}</div>
           <div class="hero-info">
             <div class="hero-name ${h.isBlonde ? 'blonde' : ''}">${h.name}</div>
             <div class="hero-tags">
               <span class="tag tag-level">Lv ${h.level}</span>
+              <span class="tag tag-rank" style="color:${rank.color};border-color:${rank.color}44;background:${rank.color}11;">${rank.badge} ${rank.name}</span>
               <span class="tag ${stateClass}">${stateLabel}</span>
             </div>
           </div>
@@ -733,6 +868,109 @@
         </div>
       </div>`;
     }).join('');
+  }
+
+  // ── Hero detail panel ──────────────────────────────────────
+  window.selectHero = function(name) {
+    if (selectedHeroName === name) { closeHeroDetail(); return; }
+    selectedHeroName = name;
+    const h = W.heroes.find(h => h.name === name);
+    if (h) renderHeroDetail(h);
+    renderHeroes(); // re-render cards to update selected state
+  };
+
+  function closeHeroDetail() {
+    selectedHeroName = null;
+    const panel = document.getElementById('hero-detail');
+    if (panel) panel.innerHTML = '';
+    renderHeroes();
+  }
+
+  function renderHeroDetail(h) {
+    const panel = document.getElementById('hero-detail');
+    if (!panel) return;
+
+    const rank      = getRank(h.level);
+    const nextRank  = getNextRank(h.level);
+    const pct       = Math.max(0, h.hp / h.maxhp);
+    const hpBar     = pct > 0.6 ? '#3a9a3a' : pct > 0.3 ? '#aaaa22' : '#aa2222';
+    const xpPct     = Math.min(1, h.xp / (h.level * 15));
+    const stateKey  = h.state === 'hunt' ? 'hunt' : h.state === 'flee' ? 'flee' : 'explore';
+    const stateLabel= stateKey === 'hunt' ? '⚔ Hunting' : stateKey === 'flee' ? '↪ Fleeing' : '◈ Exploring';
+    const stateClass= stateKey === 'hunt' ? 'tag-state-hunt' : stateKey === 'flee' ? 'tag-state-flee' : 'tag-state-explore';
+
+    // Build rank progression strip
+    const rankStrip = RANKS.map(r => {
+      const done    = h.level >= r.minLevel;
+      const current = rank.name === r.name;
+      return `<div class="rank-pip ${done ? 'done' : ''} ${current ? 'current' : ''}" style="${current ? `border-color:${rank.color};color:${rank.color};` : ''}">
+        <span class="rank-pip-badge">${r.badge}</span>
+        <span class="rank-pip-name">${r.name}</span>
+        <span class="rank-pip-lvl">Lv${r.minLevel}</span>
+      </div>`;
+    }).join('');
+
+    // Hero's personal log entries
+    const heroLog = W.log.filter(l => l.msg.startsWith(h.name.split(' ')[0])).slice(0, 6);
+    const logHtml = heroLog.length
+      ? heroLog.map(l => `<div class="log-entry ${l.type}"><span class="log-yr">Yr${l.t}</span><span class="log-icon">${LOG_ICONS[l.type]||'◈'}</span><span class="log-msg">${l.msg}</span></div>`).join('')
+      : `<div style="color:var(--text-lo);font-size:12px;padding:4px 0;">No entries yet.</div>`;
+
+    panel.innerHTML = `
+      <div class="detail-inner">
+        <button class="detail-close" onclick="window.selectHero('${h.name.replace(/'/g,"\\'")}')">✕ Close</button>
+
+        <div class="detail-header">
+          <div class="detail-avatar" style="background:${h.color}22;border-color:${h.color}88;color:${h.color};">
+            ${h.isBlonde ? '★' : h.name[0]}
+          </div>
+          <div class="detail-identity">
+            <div class="detail-name ${h.isBlonde ? 'blonde' : ''}">${h.name}${h.isBlonde ? ' ★' : ''}</div>
+            <div class="detail-rank-line" style="color:${rank.color};">${rank.badge} ${rank.name} &nbsp;·&nbsp; Level ${h.level}</div>
+            <div class="detail-tags">
+              <span class="tag ${stateClass}">${stateLabel}</span>
+              ${h.target ? `<span class="tag tag-state-hunt">vs ${h.target.name}</span>` : ''}
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-body">
+
+          <div class="detail-col">
+            <div class="detail-section-label">Vitals</div>
+            <div class="detail-bar-row">
+              <span class="detail-bar-label">HP</span>
+              <div class="hp-track" style="flex:1;"><div class="hp-fill" style="width:${Math.round(pct*100)}%;background:${hpBar};"></div></div>
+              <span class="detail-bar-val">${h.hp} / ${h.maxhp}</span>
+            </div>
+            <div class="detail-bar-row">
+              <span class="detail-bar-label">XP</span>
+              <div class="hp-track" style="flex:1;"><div class="hp-fill" style="width:${Math.round(xpPct*100)}%;background:#3366bb;"></div></div>
+              <span class="detail-bar-val">${h.xp} / ${h.level * 15}</span>
+            </div>
+            ${nextRank ? `<div class="detail-next-rank">Next rank: <span style="color:${nextRank.color};">${nextRank.badge} ${nextRank.name}</span> at Lv ${nextRank.minLevel}</div>` : `<div class="detail-next-rank" style="color:var(--gold);">★ Maximum rank achieved</div>`}
+
+            <div class="detail-section-label" style="margin-top:14px;">Combat Stats</div>
+            <div class="detail-stat-grid">
+              <div class="detail-stat"><span class="dsv">${h.atk}</span><span class="dsl">Attack</span></div>
+              <div class="detail-stat"><span class="dsv">${h.kills}</span><span class="dsl">Kills</span></div>
+              <div class="detail-stat"><span class="dsv">${h.loot}</span><span class="dsl">Relics</span></div>
+              <div class="detail-stat"><span class="dsv">${h.fleeCount}</span><span class="dsl">Retreats</span></div>
+              <div class="detail-stat"><span class="dsv">${h.level}</span><span class="dsl">Level</span></div>
+              <div class="detail-stat"><span class="dsv">${h.maxhp}</span><span class="dsl">Max HP</span></div>
+            </div>
+          </div>
+
+          <div class="detail-col">
+            <div class="detail-section-label">Rank Progression</div>
+            <div class="rank-strip">${rankStrip}</div>
+
+            <div class="detail-section-label" style="margin-top:14px;">Personal Chronicle</div>
+            <div class="detail-log">${logHtml}</div>
+          </div>
+
+        </div>
+      </div>`;
   }
 
   function renderThreats() {
@@ -752,7 +990,7 @@
         <span class="threat-count">×${cnt}</span>
       </div>`
     ).join('');
-    if (!W.enemies.length) html = '<div style="color:#4a2a4a;font-size:12px;padding:6px 0;">None lurking...</div>';
+    if (!W.enemies.length) html = '<div style="color:#9070a8;font-size:13px;padding:6px 0;">None lurking...</div>';
     html += `<div class="threat-footer">
       <div class="mini-stat"><span class="mv">${W.enemies.length}</span><span class="ml">Total</span></div>
       <div class="mini-stat"><span class="mv">${W.enemies.filter(e => e.engagedBy).length}</span><span class="ml">In battle</span></div>
