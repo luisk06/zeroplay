@@ -824,7 +824,17 @@
     updateEra();
     if (selectedHeroName) {
       const h = W.heroes.find(h => h.name === selectedHeroName);
-      if (h) renderHeroDetail(h); else closeHeroDetail();
+      if (h) {
+        // Only do a full rebuild if the panel isn't already showing this hero
+        const panel = document.getElementById('hero-detail');
+        if (!panel || !panel.querySelector(`[data-hero="${h.name}"]`)) {
+          renderHeroDetail(h);
+        } else {
+          patchHeroDetail(h); // fast in-place update, no blink
+        }
+      } else {
+        closeHeroDetail();
+      }
     }
   }
 
@@ -917,7 +927,7 @@
       : `<div style="color:var(--text-lo);font-size:12px;padding:4px 0;">No entries yet.</div>`;
 
     panel.innerHTML = `
-      <div class="detail-inner">
+      <div class="detail-inner" data-hero="${h.name}">
         <button class="detail-close" onclick="window.selectHero('${h.name.replace(/'/g,"\\'")}')">✕ Close</button>
 
         <div class="detail-header">
@@ -928,8 +938,8 @@
             <div class="detail-name ${h.isBlonde ? 'blonde' : ''}">${h.name}${h.isBlonde ? ' ★' : ''}</div>
             <div class="detail-rank-line" style="color:${rank.color};">${rank.badge} ${rank.name} &nbsp;·&nbsp; Level ${h.level}</div>
             <div class="detail-tags">
-              <span class="tag ${stateClass}">${stateLabel}</span>
-              ${h.target ? `<span class="tag tag-state-hunt">vs ${h.target.name}</span>` : ''}
+              <span class="tag ${stateClass} patch-state-tag">${stateLabel}</span>
+              <span class="tag tag-state-hunt patch-target-tag" style="${h.target ? '' : 'display:none;'}">vs ${h.target ? h.target.name : ''}</span>
             </div>
           </div>
         </div>
@@ -940,24 +950,24 @@
             <div class="detail-section-label">Vitals</div>
             <div class="detail-bar-row">
               <span class="detail-bar-label">HP</span>
-              <div class="hp-track" style="flex:1;"><div class="hp-fill" style="width:${Math.round(pct*100)}%;background:${hpBar};"></div></div>
-              <span class="detail-bar-val">${h.hp} / ${h.maxhp}</span>
+              <div class="hp-track" style="flex:1;"><div class="hp-fill patch-hp-fill" style="width:${Math.round(pct*100)}%;background:${hpBar};"></div></div>
+              <span class="detail-bar-val patch-hp-val">${h.hp} / ${h.maxhp}</span>
             </div>
             <div class="detail-bar-row">
               <span class="detail-bar-label">XP</span>
-              <div class="hp-track" style="flex:1;"><div class="hp-fill" style="width:${Math.round(xpPct*100)}%;background:#3366bb;"></div></div>
-              <span class="detail-bar-val">${h.xp} / ${h.level * 15}</span>
+              <div class="hp-track" style="flex:1;"><div class="hp-fill patch-xp-fill" style="width:${Math.round(xpPct*100)}%;background:#3366bb;"></div></div>
+              <span class="detail-bar-val patch-xp-val">${h.xp} / ${h.level * 15}</span>
             </div>
             ${nextRank ? `<div class="detail-next-rank">Next rank: <span style="color:${nextRank.color};">${nextRank.badge} ${nextRank.name}</span> at Lv ${nextRank.minLevel}</div>` : `<div class="detail-next-rank" style="color:var(--gold);">★ Maximum rank achieved</div>`}
 
             <div class="detail-section-label" style="margin-top:14px;">Combat Stats</div>
             <div class="detail-stat-grid">
-              <div class="detail-stat"><span class="dsv">${h.atk}</span><span class="dsl">Attack</span></div>
-              <div class="detail-stat"><span class="dsv">${h.kills}</span><span class="dsl">Kills</span></div>
-              <div class="detail-stat"><span class="dsv">${h.loot}</span><span class="dsl">Relics</span></div>
-              <div class="detail-stat"><span class="dsv">${h.fleeCount}</span><span class="dsl">Retreats</span></div>
-              <div class="detail-stat"><span class="dsv">${h.level}</span><span class="dsl">Level</span></div>
-              <div class="detail-stat"><span class="dsv">${h.maxhp}</span><span class="dsl">Max HP</span></div>
+              <div class="detail-stat"><span class="dsv patch-stat-atk">${h.atk}</span><span class="dsl">Attack</span></div>
+              <div class="detail-stat"><span class="dsv patch-stat-kills">${h.kills}</span><span class="dsl">Kills</span></div>
+              <div class="detail-stat"><span class="dsv patch-stat-loot">${h.loot}</span><span class="dsl">Relics</span></div>
+              <div class="detail-stat"><span class="dsv patch-stat-retreats">${h.fleeCount}</span><span class="dsl">Retreats</span></div>
+              <div class="detail-stat"><span class="dsv patch-stat-level">${h.level}</span><span class="dsl">Level</span></div>
+              <div class="detail-stat"><span class="dsv patch-stat-maxhp">${h.maxhp}</span><span class="dsl">Max HP</span></div>
             </div>
           </div>
 
@@ -966,11 +976,70 @@
             <div class="rank-strip">${rankStrip}</div>
 
             <div class="detail-section-label" style="margin-top:14px;">Personal Chronicle</div>
-            <div class="detail-log">${logHtml}</div>
+            <div class="detail-log patch-detail-log" data-count="${heroLog.length}">${logHtml}</div>
           </div>
 
         </div>
       </div>`;
+  }
+
+  // Patch only the live-changing parts of the detail panel — no innerHTML rebuild, no blink
+  function patchHeroDetail(h) {
+    const panel = document.getElementById('hero-detail');
+    if (!panel) return;
+
+    const pct    = Math.max(0, h.hp / h.maxhp);
+    const hpBar  = pct > 0.6 ? '#3a9a3a' : pct > 0.3 ? '#aaaa22' : '#aa2222';
+    const xpPct  = Math.min(1, h.xp / (h.level * 15));
+    const stateKey   = h.state === 'hunt' ? 'hunt' : h.state === 'flee' ? 'flee' : 'explore';
+    const stateLabel = stateKey === 'hunt' ? '⚔ Hunting' : stateKey === 'flee' ? '↪ Fleeing' : '◈ Exploring';
+    const stateClass = stateKey === 'hunt' ? 'tag-state-hunt' : stateKey === 'flee' ? 'tag-state-flee' : 'tag-state-explore';
+
+    function set(id, text) { const el = panel.querySelector(id); if (el) el.textContent = text; }
+    function style(id, prop, val) { const el = panel.querySelector(id); if (el) el.style[prop] = val; }
+
+    // HP bar
+    const hpFill = panel.querySelector('.patch-hp-fill');
+    if (hpFill) { hpFill.style.width = Math.round(pct * 100) + '%'; hpFill.style.background = hpBar; }
+    set('.patch-hp-val', `${h.hp} / ${h.maxhp}`);
+
+    // XP bar
+    const xpFill = panel.querySelector('.patch-xp-fill');
+    if (xpFill) xpFill.style.width = Math.round(xpPct * 100) + '%';
+    set('.patch-xp-val', `${h.xp} / ${h.level * 15}`);
+
+    // State tag
+    const stateTag = panel.querySelector('.patch-state-tag');
+    if (stateTag) { stateTag.textContent = stateLabel; stateTag.className = `tag ${stateClass} patch-state-tag`; }
+
+    // Target tag
+    const targetTag = panel.querySelector('.patch-target-tag');
+    if (targetTag) {
+      if (h.target) { targetTag.textContent = `vs ${h.target.name}`; targetTag.style.display = ''; }
+      else { targetTag.style.display = 'none'; }
+    }
+
+    // Stat values
+    set('.patch-stat-atk',      h.atk);
+    set('.patch-stat-kills',    h.kills);
+    set('.patch-stat-loot',     h.loot);
+    set('.patch-stat-retreats', h.fleeCount);
+    set('.patch-stat-level',    h.level);
+    set('.patch-stat-maxhp',    h.maxhp);
+
+    // Re-render personal log only when new entries exist (compare count)
+    const logEl = panel.querySelector('.patch-detail-log');
+    if (logEl) {
+      const heroLog = W.log.filter(l => l.msg.startsWith(h.name.split(' ')[0])).slice(0, 6);
+      const newCount = heroLog.length;
+      const oldCount = parseInt(logEl.dataset.count || '0');
+      if (newCount !== oldCount) {
+        logEl.dataset.count = newCount;
+        logEl.innerHTML = newCount
+          ? heroLog.map(l => `<div class="log-entry ${l.type}"><span class="log-yr">Yr${l.t}</span><span class="log-icon">${LOG_ICONS[l.type]||'◈'}</span><span class="log-msg">${l.msg}</span></div>`).join('')
+          : `<div style="color:var(--text-lo);font-size:12px;padding:4px 0;">No entries yet.</div>`;
+      }
+    }
   }
 
   function renderThreats() {
