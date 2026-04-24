@@ -326,6 +326,100 @@
     .log-entry.death   .log-msg { color: #aa3344; }
     .log-entry.explore .log-msg { color: #55aa66; }
 
+    /* ── Hero card image ── */
+    .hero-card-img {
+      width: 100%;
+      height: 90px;
+      object-fit: cover;
+      object-position: top center;
+      border-bottom: 1px solid var(--border2);
+      margin-bottom: 10px;
+      display: block;
+      filter: brightness(0.85) saturate(0.9);
+    }
+
+    /* ── Combat arena ── */
+    .combat-arena {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      margin: 14px 0 10px;
+      background: #080010;
+      border: 1px solid #2a0a40;
+      overflow: hidden;
+      min-height: 180px;
+    }
+    .arena-fighter {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .arena-fighter img {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+      object-position: top center;
+      display: block;
+      filter: brightness(0.8) saturate(0.85);
+      transition: filter 0.1s;
+    }
+    .arena-fighter-label {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 4px 8px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.85));
+      font-size: 10px;
+      color: var(--text-mid);
+      letter-spacing: 1px;
+      text-align: center;
+    }
+    .arena-vs {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      flex-shrink: 0;
+      background: #0e0018;
+      border-left: 1px solid #2a0a40;
+      border-right: 1px solid #2a0a40;
+    }
+    .arena-vs span {
+      font-size: 11px;
+      color: var(--purple-dim);
+      letter-spacing: 2px;
+      writing-mode: vertical-rl;
+      text-transform: uppercase;
+    }
+    .arena-hp-bar {
+      position: absolute;
+      bottom: 22px; left: 6px; right: 6px;
+      height: 4px;
+      background: rgba(0,0,0,0.5);
+      border-radius: 2px;
+    }
+    .arena-hp-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s;
+    }
+
+    /* ── Hit effect keyframes ── */
+    @keyframes hero-flash-hit {
+      0%   { filter: brightness(0.8) saturate(0.85); }
+      15%  { filter: brightness(2.2) saturate(0.2) sepia(1) hue-rotate(300deg); }
+      100% { filter: brightness(0.8) saturate(0.85); }
+    }
+    @keyframes enemy-flash-hit {
+      0%   { filter: brightness(0.8) saturate(0.85); }
+      15%  { filter: brightness(2.5) saturate(0.1) sepia(1) hue-rotate(60deg); }
+      100% { filter: brightness(0.8) saturate(0.85); }
+    }
+    .hit-hero  { animation: hero-flash-hit  0.35s ease-out forwards; }
+    .hit-enemy { animation: enemy-flash-hit 0.35s ease-out forwards; }
+
     /* ── Rank tag ── */
     .tag-rank { font-size: 9px; letter-spacing: 1px; padding: 1px 6px; border: 1px solid; text-transform: uppercase; }
 
@@ -530,6 +624,7 @@
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
 <script>
 (function () {
   // ─────────────────────────────────────────────────────────
@@ -550,8 +645,14 @@
     Troll:    { hp: [22, 32], atk: [6, 9], xp: [20, 28], tier: 4 },
   };
   const LOOT_NAMES   = ['Tome','Blade','Relic','Crystal','Potion','Amulet','Shield'];
-  const SAVE_INTERVAL_TICKS = 300;   // save every ~300 sim ticks
+  const SAVE_INTERVAL_TICKS = 300;
   const STEP_MS = 120;
+
+  const HERO_IMAGES  = ['hero-red.png','hero-blue.png','hero-green.png','hero-purple.png'];
+  const ENEMY_IMAGES = {
+    Skeleton:'skeleton.jpg', Ghoul:'ghoul.jpg', Spider:'spider.jpg',
+    Shade:'shade.jpg', Golem:'golem.jpg', Spectre:'spectre.jpg', Troll:'troll.jpg'
+  };
 
   // ─────────────────────────────────────────────────────────
   //  World state
@@ -565,6 +666,8 @@
   let speed = 2, paused = false;
   let lastTime = 0, accumulator = 0;
   let saveStatus = 'loading...';
+  // Combat event queue for visual effects: { heroName, type: 'hero-hit'|'enemy-hit', tick }
+  let combatEvents = [];
 
   // ─────────────────────────────────────────────────────────
   //  Helpers
@@ -615,7 +718,8 @@
       name: 'Unknown', hp: 10, maxhp: 10, atk: 3,
       xp: 0, level: 1, loot: 0, kills: 0,
       color: '#7060d0', state: 'explore', target: null,
-      stateTimer: 0, isBlonde: false, fleeCount: 0
+      stateTimer: 0, isBlonde: false, fleeCount: 0,
+      image: pick(HERO_IMAGES)
     }, h, { target: null, engagedBy: null });
   }
 
@@ -640,7 +744,8 @@
           name: h.name, hp: h.hp, maxhp: h.maxhp, atk: h.atk,
           xp: h.xp, level: h.level, loot: h.loot, kills: h.kills,
           color: h.color, state: h.state === 'hunt' ? 'explore' : h.state,
-          stateTimer: h.stateTimer, isBlonde: h.isBlonde, fleeCount: h.fleeCount
+          stateTimer: h.stateTimer, isBlonde: h.isBlonde, fleeCount: h.fleeCount,
+          image: h.image
         })),
         enemies: W.enemies.map(e => ({
           name: e.name, hp: e.hp, maxhp: e.maxhp, atk: e.atk,
@@ -696,6 +801,10 @@
   // ─────────────────────────────────────────────────────────
   function spawnHero(forceBlonde) {
     let isBlonde = forceBlonde === true;
+    // Assign an image not already taken by a living hero
+    const usedImages = new Set(W.heroes.map(h => h.image));
+    const availImages = HERO_IMAGES.filter(i => !usedImages.has(i));
+    const image = availImages.length ? pick(availImages) : pick(HERO_IMAGES);
     W.heroes.push({
       name:      isBlonde ? 'Kael the Stranger' : HERO_NAMES[rng(HERO_NAMES.length)] + ' ' + pick(HERO_TITLES),
       hp:        isBlonde ? 35 : 20 + rng(10),
@@ -704,7 +813,7 @@
       xp: 0, level: 1, loot: 0, kills: 0,
       color:     isBlonde ? '#e8b830' : HERO_COLORS[rng(HERO_COLORS.length)],
       state: 'explore', target: null, stateTimer: 0,
-      isBlonde, fleeCount: 0
+      isBlonde, fleeCount: 0, image
     });
   }
 
@@ -765,6 +874,7 @@
       if (rngf() < 0.4) {
         let dmg = h.atk + rng(3);
         h.target.hp -= dmg;
+        combatEvents.push({ heroName: h.name, type: 'enemy-hit', tick: W.tick });
         if (h.target.hp <= 0) {
           const tier = h.target.tier || 1;
           const suffix = tier >= 4 ? ' — a mighty victory!' : tier === 3 ? ' — a hard-won fight.' : '!';
@@ -782,6 +892,7 @@
       if (h.target && rngf() < 0.3) {
         let dmg = h.target.atk + rng(2);
         h.hp -= dmg;
+        combatEvents.push({ heroName: h.name, type: 'hero-hit', tick: W.tick });
         if (h.hp <= 0) {
           addLog(h.isBlonde ? 'Kael the Stranger has fallen!' : `${firstName(h)} fell to ${h.target.name}...`, 'death');
           W.totalDeaths++;
