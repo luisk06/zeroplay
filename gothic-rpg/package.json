@@ -1,0 +1,13 @@
+{
+  "name": "gothic-rpg",
+  "version": "0.1.0",
+  "description": "Zero-player gothic RPG — persistent simulation",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
