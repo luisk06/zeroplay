@@ -264,11 +264,13 @@
       text-align: center;
       flex-shrink: 0;
     }
-    .threat-name { font-size: 13px; color: var(--text-hi); flex: 1; }
-    .threat-bar-wrap { width: 60px; }
+    .threat-name  { font-size: 13px; color: var(--text-hi); flex: 1; }
+    .threat-tier  { font-size: 9px;  letter-spacing: 1px; flex-shrink: 0; }
+    .threat-xp    { font-size: 9px;  color: var(--text-lo); width: 52px; text-align: right; flex-shrink: 0; letter-spacing: 0.5px; }
+    .threat-bar-wrap { width: 50px; flex-shrink: 0; }
     .threat-bar-track { height: 4px; background: #1a0a28; border-radius: 1px; }
     .threat-bar-fill  { height: 100%; background: #882233; border-radius: 1px; }
-    .threat-count { font-size: 13px; color: var(--red); width: 28px; text-align: right; }
+    .threat-count { font-size: 13px; color: var(--red); width: 28px; text-align: right; flex-shrink: 0; }
 
     .threat-footer {
       margin-top: 12px;
@@ -537,6 +539,16 @@
   const HERO_NAMES   = ['Aldric','Mira','Corvus','Seraphel','Draven','Lirien','Varoth','Elyndra'];
   const HERO_TITLES  = ['the Bold','the Cursed','Darkheart','Ironsoul','Ashborne'];
   const ENEMY_NAMES  = ['Skeleton','Ghoul','Spider','Shade','Golem','Spectre','Troll'];
+  // Per-enemy type stats: hp range, atk range, xpReward range
+  const ENEMY_STATS  = {
+    Skeleton: { hp: [6,  10], atk: [2, 3], xp: [4,  7],  tier: 1 },
+    Spider:   { hp: [8,  12], atk: [2, 4], xp: [6,  9],  tier: 1 },
+    Ghoul:    { hp: [10, 16], atk: [3, 5], xp: [8,  12], tier: 2 },
+    Shade:    { hp: [12, 18], atk: [3, 5], xp: [10, 14], tier: 2 },
+    Spectre:  { hp: [14, 20], atk: [4, 6], xp: [13, 17], tier: 3 },
+    Golem:    { hp: [18, 26], atk: [5, 7], xp: [16, 22], tier: 3 },
+    Troll:    { hp: [22, 32], atk: [6, 9], xp: [20, 28], tier: 4 },
+  };
   const LOOT_NAMES   = ['Tome','Blade','Relic','Crystal','Potion','Amulet','Shield'];
   const SAVE_INTERVAL_TICKS = 300;   // save every ~300 sim ticks
   const STEP_MS = 120;
@@ -697,10 +709,18 @@
   }
 
   function spawnEnemy() {
+    // Weight spawns toward weaker enemies early, stronger ones as years pass
+    const tierCap = Math.min(4, 1 + Math.floor(W.year / 6));
+    const pool = ENEMY_NAMES.filter(n => ENEMY_STATS[n].tier <= tierCap);
+    const name = pick(pool);
+    const s = ENEMY_STATS[name];
+    const hp = s.hp[0] + rng(s.hp[1] - s.hp[0] + 1);
     W.enemies.push({
-      name: pick(ENEMY_NAMES),
-      hp: 8 + rng(12), maxhp: 15,
-      atk: 2 + rng(3), xpReward: 5 + rng(10),
+      name,
+      hp, maxhp: hp,
+      atk: s.atk[0] + rng(s.atk[1] - s.atk[0] + 1),
+      xpReward: s.xp[0] + rng(s.xp[1] - s.xp[0] + 1),
+      tier: s.tier,
       state: 'patrol', engagedBy: null
     });
   }
@@ -746,7 +766,9 @@
         let dmg = h.atk + rng(3);
         h.target.hp -= dmg;
         if (h.target.hp <= 0) {
-          addLog(`${firstName(h)} slew ${h.target.name}!`, 'combat');
+          const tier = h.target.tier || 1;
+          const suffix = tier >= 4 ? ' — a mighty victory!' : tier === 3 ? ' — a hard-won fight.' : '!';
+          addLog(`${firstName(h)} slew ${h.target.name}${suffix}`, 'combat');
           h.xp += h.target.xpReward; h.kills++; W.totalKills++; W.totalBattles++;
           W.enemies = W.enemies.filter(e => e !== h.target);
           h.state = 'explore'; h.target = null; h.stateTimer = 15;
@@ -1049,16 +1071,22 @@
     for (let e of W.enemies) counts[e.name] = (counts[e.name] || 0) + 1;
     const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     const maxCnt = sorted[0] ? sorted[0][1] : 1;
-    let html = sorted.map(([name, cnt]) =>
-      `<div class="threat-row">
+    let html = sorted.map(([name, cnt]) => {
+      const s = ENEMY_STATS[name];
+      const tierStars = s ? '◆'.repeat(s.tier) + '◇'.repeat(4 - s.tier) : '◇◇◇◇';
+      const tierColor = s ? ['','#7060a0','#50a070','#b8901a','#c04020'][s.tier] : '#7060a0';
+      const xpRange   = s ? `${s.xp[0]}–${s.xp[1]} xp` : '';
+      return `<div class="threat-row">
         <span class="threat-icon">${ENEMY_ICONS[name] || '👾'}</span>
         <span class="threat-name">${name}</span>
+        <span class="threat-tier" style="color:${tierColor};" title="Tier ${s ? s.tier : '?'}">${tierStars}</span>
+        <span class="threat-xp">${xpRange}</span>
         <div class="threat-bar-wrap">
           <div class="threat-bar-track"><div class="threat-bar-fill" style="width:${Math.round(cnt/maxCnt*100)}%"></div></div>
         </div>
         <span class="threat-count">×${cnt}</span>
-      </div>`
-    ).join('');
+      </div>`;
+    }).join('');
     if (!W.enemies.length) html = '<div style="color:#9070a8;font-size:13px;padding:6px 0;">None lurking...</div>';
     html += `<div class="threat-footer">
       <div class="mini-stat"><span class="mv">${W.enemies.length}</span><span class="ml">Total</span></div>
