@@ -110,9 +110,10 @@ function serializeWorld(w) {
       color:h.color, state: (h.state === 'hunt' || h.state === 'wounded') ? h.state : 'explore',
       stateTimer:h.stateTimer, isBlonde:h.isBlonde, fleeCount:h.fleeCount,
       falls:h.falls||0, image:h.image,
-      claimToken: h.claimToken || null,  // persisted, never broadcast
+      claimToken: h.claimToken || null,
       motto: h.motto || '',
       retired: h.retired || false, retiredAt: h.retiredAt || null,
+      dailyViewSeconds: h.dailyViewSeconds || 0, dailyViewDay: h.dailyViewDay || null,
     })),
     enemies: w.enemies.map(e => ({
       id:e.id, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,
@@ -132,7 +133,9 @@ function liveHero(h) {
     color:h.color, state:h.state, isBlonde:h.isBlonde,
     fleeCount:h.fleeCount, falls:h.falls||0, image:h.image,
     motto: h.motto || '',
-    hasClaim: !!h.claimToken,  // lets the owner UI know this hero is claimable
+    hasClaim: !!h.claimToken,
+    dailyViewSeconds: getDailyView(h),
+    dailyViewGoal: DAILY_GOAL_SECONDS,
     target: h.target ? { name:h.target.name, hp:h.target.hp, maxhp:h.target.maxhp } : null,
     log: W.log.filter(l => l.msg.startsWith(h.name.split(' ')[0])).slice(0, 12)
   };
@@ -149,6 +152,7 @@ function liveSnapshot() {
       color:h.color, state:h.state, stateTimer:h.stateTimer,
       isBlonde:h.isBlonde, fleeCount:h.fleeCount, falls:h.falls||0, image:h.image,
       motto: h.motto || '', hasClaim: !!h.claimToken,
+      dailyViewSeconds: getDailyView(h), dailyViewGoal: DAILY_GOAL_SECONDS,
       target: h.target ? { name:h.target.name, hp:h.target.hp, maxhp:h.target.maxhp } : null
     })),
     enemies: W.enemies.map(e => ({
@@ -312,6 +316,38 @@ function updateHero(h) {
     h.hp = Math.min(h.hp + 1, h.maxhp);
     if (h.stateTimer <= 0) { h.state = 'explore'; h.stateTimer = 20; }
   }
+}
+
+// ── Daily viewer tracking ─────────────────────────────────────────────────────
+// Each hero accumulates dailyViewSeconds while their page has ≥1 viewer.
+// Resets at UTC midnight. DAILY_GOAL_SECONDS = 300 (5 min).
+const DAILY_GOAL_SECONDS = 300;
+
+function utcDayStamp() { const d = new Date(); return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`; }
+
+// Called every second via setInterval for each hero that has active hero-page viewers
+function tickHeroDailyView() {
+  const today = utcDayStamp();
+  for (const [heroName, set] of heroClients) {
+    if (!set.size) continue;
+    const hero = W.heroes.find(h => h.name === heroName);
+    if (!hero) continue;
+    // Reset on new day
+    if (hero.dailyViewDay !== today) {
+      hero.dailyViewDay     = today;
+      hero.dailyViewSeconds = 0;
+    }
+    if (hero.dailyViewSeconds < DAILY_GOAL_SECONDS) {
+      hero.dailyViewSeconds = (hero.dailyViewSeconds || 0) + 1;
+    }
+  }
+}
+setInterval(tickHeroDailyView, 1000);
+
+function getDailyView(hero) {
+  const today = utcDayStamp();
+  if (hero.dailyViewDay !== today) return 0;
+  return hero.dailyViewSeconds || 0;
 }
 
 function tick() {
@@ -520,6 +556,33 @@ app.post('/api/hero/motto', (req, res) => {
   res.json({ ok:true, motto: hero.motto });
 });
 
+// Rename hero (owner only) — name must be unique, max 32 chars
+app.post('/api/hero/rename', (req, res) => {
+  const { heroName, claimToken, newName } = req.body;
+  const hero = findHeroBySlugOrName(heroName);
+  if (!hero || !hero.claimToken) return res.status(404).json({ error: 'Hero not found' });
+  if (hero.claimToken !== claimToken) return res.status(403).json({ error: 'Invalid token' });
+
+  const trimmed = String(newName || '').trim().slice(0, 32);
+  if (!trimmed) return res.status(400).json({ error: 'Name cannot be empty' });
+  if (trimmed === hero.name) return res.status(400).json({ error: 'That is already their name' });
+  // Uniqueness check
+  const taken = W.heroes.some(h => h !== hero && h.name.toLowerCase() === trimmed.toLowerCase());
+  if (taken) return res.status(409).json({ error: 'A hero with that name already exists' });
+
+  const oldName = hero.name;
+  hero.name = trimmed;
+  // Update the heroClients map key if present
+  if (heroClients.has(oldName)) {
+    const set = heroClients.get(oldName);
+    heroClients.delete(oldName);
+    heroClients.set(trimmed, set);
+  }
+  addLog(`${oldName} is now known as ${trimmed}.`, 'explore');
+  broadcast({ type:'state', world: liveSnapshot(), combatEvents:[] });
+  res.json({ ok:true, heroName: trimmed, slug: slugify(trimmed) });
+});
+
 // Retire hero (owner only) — graceful exit, marks hero as retired
 app.post('/api/hero/retire', (req, res) => {
   const { heroName, claimToken } = req.body;
@@ -612,7 +675,8 @@ async function boot() {
       target:null, stateTimer: h.state === 'wounded' ? (h.stateTimer||WOUNDED_RECOVERY_TICKS) : 0,
       isBlonde:h.isBlonde||false, fleeCount:h.fleeCount||0, image:h.image||HERO_IMAGES[0],
       claimToken: h.claimToken || null, motto: h.motto || '',
-      retired: h.retired || false, retiredAt: h.retiredAt || null
+      retired: h.retired || false, retiredAt: h.retiredAt || null,
+      dailyViewSeconds: h.dailyViewSeconds || 0, dailyViewDay: h.dailyViewDay || null
     }));
     W.enemies = (saved.enemies || []).map(e => ({
       id:enemyIdCounter++, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,

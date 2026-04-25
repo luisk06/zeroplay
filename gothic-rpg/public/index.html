@@ -248,6 +248,13 @@
     .owner-btn.retire:hover { background: #1e0808; color: var(--red); }
     .owner-msg { font-size: 10px; color: var(--green); letter-spacing: 1px; min-height: 14px; margin-top: 4px; opacity: 0; transition: opacity 0.3s; }
     .owner-msg.show { opacity: 1; }
+    .owner-msg.error { color: var(--red); }
+    /* Daily viewer gauge */
+    .daily-gauge-wrap { margin-bottom: 14px; }
+    .daily-gauge-label { font-size: 9px; letter-spacing: 2px; color: var(--text-lo); text-transform: uppercase; margin-bottom: 5px; display: flex; justify-content: space-between; }
+    .daily-gauge-track { height: 6px; background: #1a0828; border-radius: 1px; overflow: hidden; }
+    .daily-gauge-fill  { height: 100%; border-radius: 1px; transition: width 0.6s; background: #4a2a80; }
+    .daily-gauge-fill.done { background: #44aa55; }
 
     /* Card body */
     .hero-card-body { padding: 10px 12px 12px; }
@@ -967,9 +974,9 @@
           <div class="hp-track"><div class="hp-fill" style="width:${Math.round(pct*100)}%;background:${bar};"></div></div>
           <div class="hp-track" style="height:3px;margin-bottom:10px;"><div class="hp-fill" style="width:${Math.round(xpPct*100)}%;background:#2255aa;opacity:0.7;"></div></div>
           <div class="hero-stats">
+            <div class="stat-chip"><span class="val" style="color:#9a60c8;">Lv${h.level}</span><span class="lbl">Level</span></div>
             <div class="stat-chip"><span class="val">${h.atk}</span><span class="lbl">ATK</span></div>
             <div class="stat-chip"><span class="val">${h.kills}</span><span class="lbl">Kills</span></div>
-            <div class="stat-chip"><span class="val">${h.loot}</span><span class="lbl">Loot</span></div>
             <div class="stat-chip"><span class="val" style="${(h.falls||0)>0?'color:#cc8822;':''}">${h.falls||0}</span><span class="lbl">Falls</span></div>
           </div>
           <a class="btn-view-hero" href="${heroUrl}" target="_blank" onclick="event.stopPropagation()">◈ View Hero Page</a>
@@ -1064,17 +1071,40 @@
           </div>
         </div>` : `<div class="patch-arena-section" style="display:none;"></div>`}
 
-        ${isMyHero(h.name) ? `
+        ${isMyHero(h.name) ? (() => {
+          const dvSec  = h.dailyViewSeconds || 0;
+          const dvGoal = h.dailyViewGoal || 300;
+          const dvPct  = Math.min(100, Math.round(dvSec / dvGoal * 100));
+          const dvMin  = Math.floor(dvSec / 60), dvS = dvSec % 60;
+          const dvDone = dvSec >= dvGoal;
+          return `
         <div class="owner-strip" id="owner-strip">
           <div class="owner-strip-title">★ Your Hero</div>
+
+          <div class="daily-gauge-wrap">
+            <div class="daily-gauge-label">
+              <span>Daily presence — ${dvDone ? '✓ fulfilled' : 'keep page open'}</span>
+              <span>${dvMin}m ${dvS}s / 5m</span>
+            </div>
+            <div class="daily-gauge-track">
+              <div class="daily-gauge-fill ${dvDone ? 'done' : ''}" id="owner-daily-fill" style="width:${dvPct}%;"></div>
+            </div>
+          </div>
+
+          <div class="owner-motto-row">
+            <input class="owner-motto-input" id="owner-rename" type="text" maxlength="32"
+              placeholder="Rename hero…" value="${h.name.replace(/"/g,'&quot;')}">
+            <button class="owner-btn" onclick="renameHero('${h.name.replace(/'/g,"\\'")}')">Rename</button>
+          </div>
           <div class="owner-motto-row">
             <input class="owner-motto-input" id="owner-motto" type="text" maxlength="80"
-              placeholder="Set a motto for your hero…" value="${(h.motto||'').replace(/"/g,'&quot;')}">
-            <button class="owner-btn" onclick="saveMotto('${h.name.replace(/'/g,"\\'")}')">Save</button>
+              placeholder="Set a motto…" value="${(h.motto||'').replace(/"/g,'&quot;')}">
+            <button class="owner-btn" onclick="saveMotto('${h.name.replace(/'/g,"\\'")}')">Save Motto</button>
           </div>
           <div class="owner-msg" id="owner-msg"></div>
-          <button class="owner-btn retire" onclick="retireHero('${h.name.replace(/'/g,"\\'")}')">⚰ Retire Hero</button>
-        </div>` : ''}
+          <button class="owner-btn retire" style="margin-top:6px;" onclick="retireHero('${h.name.replace(/'/g,"\\'")}')">⚰ Retire Hero</button>
+        </div>`;
+        })() : ''}
 
         <div class="detail-body">
 
@@ -1206,6 +1236,20 @@
         arenaSection.style.display = 'none';
         arenaSection.innerHTML = '';
       }
+    }
+
+    // Daily gauge patch (owner strip)
+    if (isMyHero(h.name)) {
+      const dvSec  = h.dailyViewSeconds || 0;
+      const dvGoal = h.dailyViewGoal || 300;
+      const dvPct  = Math.min(100, Math.round(dvSec / dvGoal * 100));
+      const dvDone = dvSec >= dvGoal;
+      const dvFill = panel.querySelector('#owner-daily-fill');
+      if (dvFill) { dvFill.style.width = dvPct + '%'; dvFill.classList.toggle('done', dvDone); }
+      const dvLabel = panel.querySelector('.daily-gauge-label span:last-child');
+      if (dvLabel) { const m = Math.floor(dvSec/60), s = dvSec%60; dvLabel.textContent = `${m}m ${s}s / 5m`; }
+      const dvTitle = panel.querySelector('.daily-gauge-label span:first-child');
+      if (dvTitle) dvTitle.textContent = dvDone ? 'Daily presence — ✓ fulfilled' : 'Daily presence — keep page open';
     }
 
     // Re-render personal log only when new entries exist (compare count)
@@ -1403,8 +1447,10 @@
         return;
       }
       if (data.ok && data.heroName) {
-        // Store ownership claim immediately
-        if (data.claimToken) setClaim(data.heroName, data.claimToken);
+        if (data.claimToken) {
+          setClaim(data.heroName, data.claimToken);
+          document.getElementById('btn-join').style.display = 'none';
+        }
         showJoinToast(data.heroName, !!data.claimToken);
       }
     } catch(e) { /* silent */ }
@@ -1420,6 +1466,26 @@
   }
 
   // ── Owner actions ─────────────────────────────────────────
+  window.renameHero = async function(currentName) {
+    const claim = getClaim();
+    if (!claim || claim.heroName !== currentName) return;
+    const newName = (document.getElementById('owner-rename')?.value || '').trim();
+    const msgEl = document.getElementById('owner-msg');
+    const res = await fetch('/api/hero/rename', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ heroName: currentName, claimToken: claim.claimToken, newName })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      // Update the stored claim with the new name
+      setClaim(data.heroName, claim.claimToken);
+      selectedHeroName = data.heroName;
+      if (msgEl) { msgEl.textContent = `Renamed to ${data.heroName} ✓`; msgEl.className = 'owner-msg show'; setTimeout(() => msgEl.classList.remove('show'), 2500); }
+    } else {
+      if (msgEl) { msgEl.textContent = data.error || 'Rename failed.'; msgEl.className = 'owner-msg show error'; setTimeout(() => { msgEl.classList.remove('show','error'); }, 2500); }
+    }
+  };
+
   window.saveMotto = async function(heroName) {
     const claim = getClaim();
     if (!claim || claim.heroName !== heroName) return;
@@ -1446,6 +1512,7 @@
     if (res.ok) {
       clearClaim();
       closeHeroDetail();
+      document.getElementById('btn-join').style.display = '';
       const t = document.getElementById('join-toast');
       t.textContent = `${heroName} has retired. Their legend endures.`;
       t.style.display = 'block';
@@ -1727,6 +1794,18 @@
   // ─────────────────────────────────────────────────────────
   //  Boot
   // ─────────────────────────────────────────────────────────
+  // Hide "Join the World" if user already has a hero
+  (function updateJoinBtn() {
+    const btn = document.getElementById('btn-join');
+    if (!btn) return;
+    const claim = getClaim();
+    if (claim) {
+      btn.style.display = 'none';
+    } else {
+      btn.style.display = '';
+    }
+  })();
+
   setSaveStatus('connecting...');
   connectSSE();
 })();

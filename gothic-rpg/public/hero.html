@@ -148,6 +148,13 @@
     .op-btn.retire:hover { background:#1e0808; color:var(--red); }
     .op-msg { font-size:10px; color:var(--green); letter-spacing:1px; opacity:0; transition:opacity 0.3s; min-height:14px; }
     .op-msg.show { opacity:1; }
+    .op-msg.error { color:var(--red); }
+    /* Daily gauge */
+    .dg-wrap { margin-bottom:14px; }
+    .dg-label { font-size:9px; letter-spacing:2px; color:var(--text-lo); text-transform:uppercase; margin-bottom:5px; display:flex; justify-content:space-between; }
+    .dg-track { height:6px; background:#1a0828; border-radius:1px; overflow:hidden; }
+    .dg-fill   { height:100%; border-radius:1px; transition:width 0.6s; background:#4a2a80; }
+    .dg-fill.done { background:#44aa55; }
 
     /* Share section */
     #share-section { margin-top:28px; padding-top:16px; border-top:1px solid var(--border2); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
@@ -194,6 +201,19 @@
     <!-- Owner panel (only visible to the owner, checked via localStorage) -->
     <div id="owner-panel" style="display:none;">
       <div id="owner-panel-title">★ Your Hero</div>
+
+      <div class="dg-wrap">
+        <div class="dg-label">
+          <span id="dg-status">Daily presence — keep page open</span>
+          <span id="dg-time">0m 0s / 5m</span>
+        </div>
+        <div class="dg-track"><div class="dg-fill" id="dg-fill" style="width:0%;"></div></div>
+      </div>
+
+      <div class="op-row">
+        <input class="op-input" id="op-rename" type="text" maxlength="32" placeholder="Rename hero…">
+        <button class="op-btn" onclick="renameHero()">Rename</button>
+      </div>
       <div class="op-row">
         <input class="op-input" id="op-motto" type="text" maxlength="80" placeholder="Set a motto for your hero…">
         <button class="op-btn" onclick="saveMotto()">Save Motto</button>
@@ -342,9 +362,23 @@
     if (ownerPanel) {
       ownerPanel.style.display = isOwner ? '' : 'none';
       if (isOwner) {
+        // Prefill inputs only if empty (don't overwrite while user is typing)
+        const renameInput = document.getElementById('op-rename');
+        if (renameInput && !renameInput.value) renameInput.value = hero.name;
         const mottoInput = document.getElementById('op-motto');
-        // Only prefill if the input is empty (don't overwrite while typing)
         if (mottoInput && !mottoInput.value) mottoInput.value = hero.motto || '';
+
+        // Update daily gauge
+        const dvSec  = hero.dailyViewSeconds || 0;
+        const dvGoal = hero.dailyViewGoal || 300;
+        const dvPct  = Math.min(100, Math.round(dvSec / dvGoal * 100));
+        const dvDone = dvSec >= dvGoal;
+        const dvFill = document.getElementById('dg-fill');
+        if (dvFill) { dvFill.style.width = dvPct + '%'; dvFill.classList.toggle('done', dvDone); }
+        const dgTime = document.getElementById('dg-time');
+        if (dgTime) { const m = Math.floor(dvSec/60), s = dvSec%60; dgTime.textContent = `${m}m ${s}s / 5m`; }
+        const dgStatus = document.getElementById('dg-status');
+        if (dgStatus) dgStatus.textContent = dvDone ? 'Daily presence — ✓ fulfilled' : 'Daily presence — keep page open';
       }
     }
 
@@ -482,6 +516,31 @@
     };
     es.onerror = () => setTimeout(connect, 3000);
   }
+
+  async function renameHero() {
+    const claim = getClaim();
+    if (!claim) return;
+    const newName = (document.getElementById('op-rename')?.value || '').trim();
+    const msgEl = document.getElementById('op-msg');
+    const res = await fetch('/api/hero/rename', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ heroName: claim.heroName, claimToken: claim.claimToken, newName })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      // Update localStorage claim and page title
+      localStorage.setItem('gothic-rpg-claim', JSON.stringify({ heroName: data.heroName, claimToken: claim.claimToken, createdAt: claim.createdAt }));
+      document.title = `${data.heroName} — Gothic RPG`;
+      document.getElementById('hero-title').textContent = data.heroName + (currentHero?.isBlonde ? ' ★' : '');
+      // Redirect to new slug URL
+      history.replaceState(null, '', `/hero?name=${data.slug}`);
+      setShareUrl(data.heroName);
+      if (msgEl) { msgEl.textContent = `Renamed to ${data.heroName} ✓`; msgEl.className = 'op-msg show'; setTimeout(()=>msgEl.classList.remove('show'), 2500); }
+    } else {
+      if (msgEl) { msgEl.textContent = data.error || 'Rename failed.'; msgEl.className = 'op-msg show error'; setTimeout(()=>{ msgEl.classList.remove('show','error'); }, 2500); }
+    }
+  }
+  window.renameHero = renameHero;
 
   async function saveMotto() {
     const claim = getClaim();
