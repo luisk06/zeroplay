@@ -163,21 +163,46 @@
     #event-feed::-webkit-scrollbar-thumb { background: #2a1040; border-radius: 2px; }
     #leaderboard-section { padding: 16px 20px; }
 
+    /* ── Era progress bar ── */
+    #era-progress-wrap {
+      padding: 6px 20px 0; background: #080010; border-bottom: 1px solid var(--border2);
+    }
+    #era-progress-inner {
+      display: flex; align-items: center; gap: 10px; padding-bottom: 6px;
+    }
+    #era-progress-label { font-size: 9px; color: var(--text-lo); letter-spacing: 2px; text-transform: uppercase; flex-shrink: 0; }
+    #era-progress-track { flex: 1; height: 3px; background: #1a0828; border-radius: 1px; overflow: hidden; }
+    #era-progress-fill  { height: 100%; background: var(--purple-dim); border-radius: 1px; transition: width 0.8s ease; }
+    #era-progress-end   { font-size: 9px; color: var(--text-dim); letter-spacing: 1px; flex-shrink: 0; }
+
     /* Event feed */
     .feed-entry {
       display: flex; align-items: baseline; gap: 10px;
       padding: 7px 0; border-bottom: 1px solid #0d000f;
       font-size: 12px; line-height: 1.5;
+      transition: background 0.5s;
     }
     .feed-entry:last-child { border-bottom: none; }
     .feed-yr   { font-size: 10px; color: var(--text-lo); letter-spacing: 1px; flex-shrink: 0; min-width: 32px; }
     .feed-icon { font-size: 13px; flex-shrink: 0; }
     .feed-msg  { color: var(--text-mid); flex: 1; }
-    .feed-entry.combat .feed-msg { color: #e05555; }
-    .feed-entry.loot   .feed-msg { color: #d4aa44; }
-    .feed-entry.level  .feed-msg { color: #5599dd; }
-    .feed-entry.death  .feed-msg { color: #aa3344; }
+    .feed-entry.combat  .feed-msg { color: #e05555; }
+    .feed-entry.loot    .feed-msg { color: #d4aa44; }
+    .feed-entry.level   .feed-msg { color: #5599dd; }
+    .feed-entry.death   .feed-msg { color: #aa3344; }
     .feed-entry.explore .feed-msg { color: #55aa66; }
+
+    /* Flash animation for new entries */
+    @keyframes feed-flash-combat  { 0%{background:#3a0a10} 100%{background:transparent} }
+    @keyframes feed-flash-level   { 0%{background:#0a1a3a} 100%{background:transparent} }
+    @keyframes feed-flash-loot    { 0%{background:#2a1a00} 100%{background:transparent} }
+    @keyframes feed-flash-death   { 0%{background:#3a0808} 100%{background:transparent} }
+    @keyframes feed-flash-explore { 0%{background:#081a10} 100%{background:transparent} }
+    .feed-new.combat  { animation: feed-flash-combat  1.4s ease-out forwards; }
+    .feed-new.level   { animation: feed-flash-level   1.4s ease-out forwards; }
+    .feed-new.loot    { animation: feed-flash-loot    1.4s ease-out forwards; }
+    .feed-new.death   { animation: feed-flash-death   1.4s ease-out forwards; }
+    .feed-new.explore { animation: feed-flash-explore 1.4s ease-out forwards; }
 
     /* Leaderboard */
     .lb-row {
@@ -185,6 +210,7 @@
       padding: 8px 0; border-bottom: 1px solid #0d000f;
       cursor: pointer; text-decoration: none; color: inherit;
       transition: background 0.1s;
+      position: relative;
     }
     .lb-row:last-child { border-bottom: none; }
     .lb-row:hover { background: #0e0014; }
@@ -195,6 +221,27 @@
     .lb-sub   { font-size: 10px; color: var(--text-lo); letter-spacing: 0.5px; }
     .lb-kills { font-size: 13px; color: var(--text-mid); flex-shrink: 0; min-width: 36px; text-align: right; }
     .lb-mine  { color: var(--gold) !important; }
+    /* Combat pulse on leaderboard */
+    .lb-combat-dot {
+      display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+      background: #e05555; margin-left: 5px; vertical-align: middle;
+      animation: lb-combat-pulse 0.9s ease-in-out infinite alternate;
+      flex-shrink: 0;
+    }
+    @keyframes lb-combat-pulse { from { opacity: 1; box-shadow: 0 0 4px #e05555; } to { opacity: 0.35; box-shadow: none; } }
+    /* Viewer glow on leaderboard portrait */
+    .lb-port.has-viewers { border-color: #5a3a80; box-shadow: 0 0 8px #7a4a9a55; filter: brightness(1); }
+
+    /* ── Death toast ── */
+    #death-toast {
+      position: fixed; top: 24px; left: 50%; transform: translateX(-50%) translateY(-80px);
+      background: #1a0008; border: 1px solid #7a1a2a; color: #e06070;
+      font-family: 'Courier New', monospace; font-size: 12px; padding: 12px 24px;
+      letter-spacing: 1px; z-index: 300; text-align: center; pointer-events: none;
+      transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s;
+      opacity: 0; white-space: nowrap;
+    }
+    #death-toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 
     /* ── Browse all heroes (collapsible) ── */
     #browse-section { border-bottom: 1px solid var(--border2); }
@@ -210,6 +257,25 @@
     #browse-toggle.open .toggle-arrow { transform: rotate(180deg); }
     #browse-body { display: none; padding: 16px 20px; }
     #browse-body.open { display: block; }
+
+    /* ── Mobile ── */
+    @media (max-width: 700px) {
+      body { padding: 0 0 40px; }
+      #app { border: none; }
+      #header { padding: 8px 12px; gap: 8px; }
+      #title-block h1 { font-size: 13px; }
+      #controls button, #my-hero-link { font-size: 10px; padding: 4px 10px; }
+      #pulse-strip { flex-wrap: wrap; }
+      .pulse-stat { min-width: 80px; padding: 8px 12px; }
+      .pulse-val { font-size: 15px; }
+      #feed-section, #leaderboard-section { padding: 12px 14px; }
+      #event-feed { max-height: 280px; }
+      #browse-body { padding: 12px 14px; }
+      #bottom-row { grid-template-columns: 1fr; }
+      #threats-section { border-right: none; border-bottom: 1px solid var(--border2); }
+      .detail-body { grid-template-columns: 1fr; }
+      #my-hero-banner { padding: 10px 14px; }
+    }
 
     /* ── Main layout: heroes full-width top, then 2-col bottom ── */
     #heroes-section {
@@ -831,12 +897,21 @@
     </div>
   </div>
 
+  <!-- Era progress bar -->
+  <div id="era-progress-wrap">
+    <div id="era-progress-inner">
+      <span id="era-progress-label">Age of Shadow</span>
+      <div id="era-progress-track"><div id="era-progress-fill" style="width:0%"></div></div>
+      <span id="era-progress-end">Yr 10</span>
+    </div>
+  </div>
+
   <!-- Pulse strip -->
   <div id="pulse-strip">
     <div class="pulse-stat"><span class="pulse-val" id="pulse-souls">—</span><span class="pulse-lbl">Souls</span></div>
     <div class="pulse-stat"><span class="pulse-val" id="pulse-year">—</span><span class="pulse-lbl">Year</span></div>
     <div class="pulse-stat"><span class="pulse-val" id="pulse-kills">—</span><span class="pulse-lbl">Total Kills</span></div>
-    <div class="pulse-stat"><span class="pulse-val" id="pulse-battles">—</span><span class="pulse-lbl">Battles</span></div>
+    <div class="pulse-stat"><span class="pulse-val" id="pulse-combat" style="color:#e05555;">—</span><span class="pulse-lbl">In Combat</span></div>
     <div class="pulse-stat"><span class="pulse-val" id="pulse-viewers">—</span><span class="pulse-lbl">Watching</span></div>
   </div>
 
@@ -895,6 +970,9 @@
   </div>
 
 </div>
+
+<!-- Death toast -->
+<div id="death-toast"></div>
 
 <!-- Map modal -->
 <div id="map-modal">
@@ -1058,6 +1136,8 @@
 
   function renderAll() {
     processCombatEvents();
+    checkDeathEvents();
+    renderEraProgress();
     renderPulse();
     renderBanner();
     renderFeed();
@@ -1082,13 +1162,57 @@
     }
   }
 
+  // ── Death toast ───────────────────────────────────────────
+  let _deathToastTimer = null;
+  let _lastLogLength = 0;
+
+  function checkDeathEvents() {
+    const log = W.log || [];
+    // Only scan newly arrived entries
+    if (log.length <= _lastLogLength) { _lastLogLength = log.length; return; }
+    const newEntries = log.slice(0, log.length - _lastLogLength);
+    _lastLogLength = log.length;
+    const deathEntry = newEntries.find(l => l.type === 'death');
+    if (deathEntry) showDeathToast(deathEntry.msg);
+  }
+
+  function showDeathToast(msg) {
+    const t = document.getElementById('death-toast');
+    if (!t) return;
+    t.innerHTML = `† ${msg}`;
+    t.classList.add('show');
+    clearTimeout(_deathToastTimer);
+    _deathToastTimer = setTimeout(() => t.classList.remove('show'), 4500);
+  }
+
+  // ── Era progress bar ──────────────────────────────────────
+  // Each era spans ERA_YEARS years; cycle resets on era change
+  const ERA_YEARS = 10;
+  let _lastEra = null;
+  let _eraStartYear = 1;
+
+  function renderEraProgress() {
+    if (!W) return;
+    // Detect era change — reset the baseline year
+    if (W.era !== _lastEra) { _lastEra = W.era; _eraStartYear = W.year; }
+    const elapsed = W.year - _eraStartYear;
+    const pct = Math.min(100, Math.round(elapsed / ERA_YEARS * 100));
+    const fill = document.getElementById('era-progress-fill');
+    const label = document.getElementById('era-progress-label');
+    const end   = document.getElementById('era-progress-end');
+    if (fill)  fill.style.width = pct + '%';
+    if (label) label.textContent = W.era || 'Age of Shadow';
+    if (end)   end.textContent   = `Yr ${_eraStartYear + ERA_YEARS}`;
+  }
+
   // ── Pulse strip ───────────────────────────────────────────
   function renderPulse() {
     const el = id => document.getElementById(id);
     if (el('pulse-souls'))   el('pulse-souls').textContent   = W.heroes.length;
     if (el('pulse-year'))    el('pulse-year').textContent    = W.year;
     if (el('pulse-kills'))   el('pulse-kills').textContent   = W.totalKills || 0;
-    if (el('pulse-battles')) el('pulse-battles').textContent = W.totalBattles || 0;
+    const inCombat = W.heroes.filter(h => h.state === 'hunt').length;
+    if (el('pulse-combat'))  el('pulse-combat').textContent  = inCombat || '—';
     if (el('pulse-viewers')) el('pulse-viewers').textContent = W.viewers || 0;
     // Keep browse count label current
     const browseCount = el('browse-count');
@@ -1125,17 +1249,32 @@
   }
 
   // ── Event feed ────────────────────────────────────────────
+  let _feedTopMsg = null; // track topmost entry to detect new ones
+
   function renderFeed() {
     const el = document.getElementById('event-feed');
     if (!el) return;
     const log = (W.log || []).slice(0, 18);
     if (!log.length) { el.innerHTML = `<div style="color:var(--text-lo);font-size:12px;">No events yet.</div>`; return; }
-    el.innerHTML = log.map(l => `
-      <div class="feed-entry ${l.type}">
+
+    // Detect how many new entries appeared at the top since last render
+    const topMsg = log[0] ? log[0].msg + log[0].t : '';
+    const isNew  = topMsg !== _feedTopMsg;
+    _feedTopMsg  = topMsg;
+
+    // Count new entries by comparing against existing rendered entries
+    const existingMsgs = [...el.querySelectorAll('.feed-entry')].map(e => e.dataset.key);
+    const newKeys = new Set(log.map(l => l.msg + l.t));
+
+    el.innerHTML = log.map((l, i) => {
+      const key    = l.msg + l.t;
+      const isNewEntry = isNew && !existingMsgs.includes(key);
+      return `<div class="feed-entry ${l.type}${isNewEntry ? ' feed-new' : ''}" data-key="${key}">
         <span class="feed-yr">Yr${l.t}</span>
         <span class="feed-icon">${LOG_ICONS[l.type] || '◈'}</span>
         <span class="feed-msg">${l.msg}</span>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
   // ── Leaderboard ───────────────────────────────────────────
@@ -1146,15 +1285,17 @@
     const sorted = [...W.heroes].sort((a, b) => b.kills - a.kills || b.level - a.level).slice(0, 10);
     if (!sorted.length) { el.innerHTML = `<div style="color:var(--text-lo);font-size:12px;">No heroes yet.</div>`; return; }
     el.innerHTML = sorted.map((h, i) => {
-      const rank = getRank(h.level);
-      const mine = claim && claim.heroName === h.name;
-      const stateIcon = h.state === 'hunt' ? '⚔' : h.state === 'wounded' ? '✞' : h.state === 'flee' ? '↪' : '◈';
+      const rank      = getRank(h.level);
+      const mine      = claim && claim.heroName === h.name;
+      const inCombat  = h.state === 'hunt';
+      const hasViewers = (h.heroViewers || 0) > 0;
+      const stateIcon = inCombat ? '⚔' : h.state === 'wounded' ? '✞' : h.state === 'flee' ? '↪' : '◈';
       return `<a class="lb-row" href="/hero?name=${slugify(h.name)}">
         <span class="lb-rank">${i + 1}</span>
-        ${h.image ? `<img class="lb-port" src="${h.image}" alt="${h.name}">` : ''}
+        ${h.image ? `<img class="lb-port${hasViewers ? ' has-viewers' : ''}" src="${h.image}" alt="${h.name}">` : ''}
         <div class="lb-info">
-          <div class="lb-name ${mine ? 'lb-mine' : ''}">${mine ? '★ ' : ''}${h.name}</div>
-          <div class="lb-sub">${rank.badge} ${rank.name} · Lv ${h.level} · ${stateIcon}</div>
+          <div class="lb-name ${mine ? 'lb-mine' : ''}">${mine ? '★ ' : ''}${h.name}${inCombat ? '<span class="lb-combat-dot" title="In combat"></span>' : ''}</div>
+          <div class="lb-sub">${rank.badge} ${rank.name} · Lv ${h.level} · ${stateIcon}${hasViewers ? ` · 👁 ${h.heroViewers}` : ''}</div>
         </div>
         <span class="lb-kills" title="kills">${h.kills}⚔</span>
       </a>`;
