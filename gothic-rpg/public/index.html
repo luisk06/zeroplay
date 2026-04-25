@@ -659,290 +659,70 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
 <script>
 (function () {
   // ─────────────────────────────────────────────────────────
-  //  Constants
+  //  Constants (display-only — no simulation here)
   // ─────────────────────────────────────────────────────────
-  const HERO_COLORS  = ['#7060d0','#d060a0','#60a0d0','#d0a060','#60d090'];
-  const HERO_NAMES   = ['Aldric','Mira','Corvus','Seraphel','Draven','Lirien','Varoth','Elyndra'];
-  const HERO_TITLES  = ['the Bold','the Cursed','Darkheart','Ironsoul','Ashborne'];
   const ENEMY_NAMES  = ['Skeleton','Ghoul','Spider','Shade','Golem','Spectre','Troll'];
-  // Per-enemy type stats: hp range, atk range, xpReward range
   const ENEMY_STATS  = {
-    Skeleton: { hp: [22,  34], atk: [2, 3], xp: [4,  7],  tier: 1 },
-    Spider:   { hp: [26,  38], atk: [2, 4], xp: [6,  9],  tier: 1 },
-    Ghoul:    { hp: [34,  50], atk: [3, 5], xp: [8,  12], tier: 2 },
-    Shade:    { hp: [38,  56], atk: [3, 5], xp: [10, 14], tier: 2 },
-    Spectre:  { hp: [48,  68], atk: [4, 6], xp: [13, 17], tier: 3 },
-    Golem:    { hp: [60,  86], atk: [5, 7], xp: [16, 22], tier: 3 },
-    Troll:    { hp: [80, 110], atk: [6, 9], xp: [20, 28], tier: 4 },
+    Skeleton: { hp:[22,34],  atk:[2,3], xp:[4,7],   tier:1 },
+    Spider:   { hp:[26,38],  atk:[2,4], xp:[6,9],   tier:1 },
+    Ghoul:    { hp:[34,50],  atk:[3,5], xp:[8,12],  tier:2 },
+    Shade:    { hp:[38,56],  atk:[3,5], xp:[10,14], tier:2 },
+    Spectre:  { hp:[48,68],  atk:[4,6], xp:[13,17], tier:3 },
+    Golem:    { hp:[60,86],  atk:[5,7], xp:[16,22], tier:3 },
+    Troll:    { hp:[80,110], atk:[6,9], xp:[20,28], tier:4 },
   };
-  const LOOT_NAMES   = ['Tome','Blade','Relic','Crystal','Potion','Amulet','Shield'];
-  const SAVE_INTERVAL_TICKS = 300;
-  const STEP_MS = 120;
 
-  const HERO_IMAGES  = ['hero-red.png','hero-blue.png','hero-green.png','hero-purple.png'];
   const ENEMY_IMAGES = {
     Skeleton:'skeleton.jpg', Ghoul:'ghoul.jpg', Spider:'spider.jpg',
     Shade:'shade.jpg', Golem:'golem.jpg', Spectre:'spectre.jpg', Troll:'troll.jpg'
   };
 
   // ─────────────────────────────────────────────────────────
-  //  World state
+  //  World state (display only — populated from server SSE)
   // ─────────────────────────────────────────────────────────
-  let W = {
-    tick: 0, year: 1,
-    totalKills: 0, totalDeaths: 0, totalLoot: 0, totalBattles: 0,
-    heroes: [], enemies: [], log: []
-  };
-
-  let speed = 2, paused = false;
-  let lastTime = 0, accumulator = 0;
-  let saveStatus = 'loading...';
-  // Combat event queue for visual effects: { heroName, type: 'hero-hit'|'enemy-hit', tick }
+  let W = { tick:0, year:1, era:'Age of Shadow', totalKills:0, totalDeaths:0, totalLoot:0, totalBattles:0, heroes:[], enemies:[], log:[], speed:2, paused:false };
   let combatEvents = [];
 
-  // ─────────────────────────────────────────────────────────
-  //  Helpers
-  // ─────────────────────────────────────────────────────────
-  function rng(n)  { return Math.floor(Math.random() * n); }
-  function rngf()  { return Math.random(); }
-  function pick(a) { return a[rng(a.length)]; }
   function firstName(h) { return h.name.split(' ')[0]; }
 
-  function era() {
-    return W.year < 10  ? 'Age of Shadow'
-         : W.year < 25  ? 'Age of Blood'
-         : W.year < 50  ? 'Age of Ash'
-         :                 'Age of Ruin';
-  }
-
-  // ─────────────────────────────────────────────────────────
-  //  Persistence
-  // ─────────────────────────────────────────────────────────
-  async function loadFromServer() {
-    try {
-      const res = await fetch('/api/state');
-      const data = await res.json();
-      if (data && data.tick !== undefined) {
-        // Restore world — strip runtime-only fields
-        W.tick          = data.tick          || 0;
-        W.year          = data.year          || 1;
-        W.totalKills    = data.totalKills    || 0;
-        W.totalDeaths   = data.totalDeaths   || 0;
-        W.totalLoot     = data.totalLoot     || 0;
-        W.totalBattles  = data.totalBattles  || 0;
-        W.heroes        = (data.heroes  || []).map(restoreHero);
-        W.enemies       = (data.enemies || []).map(restoreEnemy);
-        W.log           = data.log || [];
-        setSaveStatus(data.savedAt ? `saved ${timeAgo(data.savedAt)}` : 'new world');
-      } else {
-        setSaveStatus('new world');
-      }
-    } catch (e) {
-      setSaveStatus('offline');
-    }
-    repopulate();
-    renderAll();
-  }
-
-  function restoreHero(h) {
-    return Object.assign({
-      name: 'Unknown', hp: 10, maxhp: 10, atk: 3,
-      xp: 0, level: 1, loot: 0, kills: 0,
-      color: '#7060d0', state: 'explore', target: null,
-      stateTimer: 0, isBlonde: false, fleeCount: 0,
-      image: pick(HERO_IMAGES)
-    }, h, { target: null, engagedBy: null });
-  }
-
-  function restoreEnemy(e) {
-    return Object.assign({
-      name: 'Skeleton', hp: 8, maxhp: 15, atk: 2,
-      xpReward: 5, state: 'patrol', engagedBy: null
-    }, e, { engagedBy: null });
-  }
-
-  async function saveToServer() {
-    try {
-      // Sanitise before sending — strip circular refs (target/engagedBy)
-      const payload = {
-        tick:         W.tick,
-        year:         W.year,
-        totalKills:   W.totalKills,
-        totalDeaths:  W.totalDeaths,
-        totalLoot:    W.totalLoot,
-        totalBattles: W.totalBattles,
-        heroes: W.heroes.map(h => ({
-          name: h.name, hp: h.hp, maxhp: h.maxhp, atk: h.atk,
-          xp: h.xp, level: h.level, loot: h.loot, kills: h.kills,
-          color: h.color, state: h.state === 'hunt' ? 'explore' : h.state,
-          stateTimer: h.stateTimer, isBlonde: h.isBlonde, fleeCount: h.fleeCount,
-          image: h.image
-        })),
-        enemies: W.enemies.map(e => ({
-          name: e.name, hp: e.hp, maxhp: e.maxhp, atk: e.atk,
-          xpReward: e.xpReward, state: e.state
-        })),
-        log: W.log.slice(0, 40)
-      };
-      const res = await fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      setSaveStatus(`saved ${timeAgo(data.savedAt)}`);
-    } catch (e) {
-      setSaveStatus('save failed');
-    }
-  }
-
-  async function resetWorld() {
-    try {
-      const res = await fetch('/api/reset', { method: 'POST' });
-      const fresh = await res.json();
-      W.tick = 0; W.year = 1;
-      W.totalKills = 0; W.totalDeaths = 0; W.totalLoot = 0; W.totalBattles = 0;
-      W.heroes = []; W.enemies = []; W.log = [];
-      addLog('The world has been unmade. All begins anew.', 'explore');
-      repopulate();
-      renderAll();
-      setSaveStatus('reset');
-    } catch(e) {
-      setSaveStatus('reset failed');
-    }
-  }
-
   function setSaveStatus(msg) {
-    saveStatus = msg;
     const el = document.getElementById('save-status');
     if (el) el.textContent = msg;
   }
 
-  function timeAgo(isoStr) {
-    if (!isoStr) return 'just now';
-    const diff = Math.floor((Date.now() - new Date(isoStr)) / 1000);
-    if (diff < 5)   return 'just now';
-    if (diff < 60)  return `${diff}s ago`;
-    if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
-    return `${Math.floor(diff/3600)}h ago`;
-  }
-
   // ─────────────────────────────────────────────────────────
-  //  Spawn
+  //  SSE connection
   // ─────────────────────────────────────────────────────────
-  function spawnHero(forceBlonde) {
-    let isBlonde = forceBlonde === true;
-    // Assign an image not already taken by a living hero
-    const usedImages = new Set(W.heroes.map(h => h.image));
-    const availImages = HERO_IMAGES.filter(i => !usedImages.has(i));
-    const image = availImages.length ? pick(availImages) : pick(HERO_IMAGES);
-    W.heroes.push({
-      name:      isBlonde ? 'Kael the Stranger' : HERO_NAMES[rng(HERO_NAMES.length)] + ' ' + pick(HERO_TITLES),
-      hp:        isBlonde ? 35 : 20 + rng(10),
-      maxhp:     isBlonde ? 35 : 30,
-      atk:       isBlonde ? 6  : 3 + rng(4),
-      xp: 0, level: 1, loot: 0, kills: 0,
-      color:     isBlonde ? '#e8b830' : HERO_COLORS[rng(HERO_COLORS.length)],
-      state: 'explore', target: null, stateTimer: 0,
-      isBlonde, fleeCount: 0, image
-    });
-  }
-
-  function spawnEnemy() {
-    // Weight spawns toward weaker enemies early, stronger ones as years pass
-    const tierCap = Math.min(4, 1 + Math.floor(W.year / 6));
-    const pool = ENEMY_NAMES.filter(n => ENEMY_STATS[n].tier <= tierCap);
-    const name = pick(pool);
-    const s = ENEMY_STATS[name];
-    const hp = s.hp[0] + rng(s.hp[1] - s.hp[0] + 1);
-    W.enemies.push({
-      name,
-      hp, maxhp: hp,
-      atk: s.atk[0] + rng(s.atk[1] - s.atk[0] + 1),
-      xpReward: s.xp[0] + rng(s.xp[1] - s.xp[0] + 1),
-      tier: s.tier,
-      state: 'patrol', engagedBy: null
-    });
-  }
-
-  function repopulate() {
-    if (!W.heroes.some(h => h.isBlonde)) spawnHero(true);
-    while (W.heroes.length < 4) spawnHero(false);
-    while (W.enemies.length < 6 + Math.floor(W.year / 4)) spawnEnemy();
-  }
-
-  // ─────────────────────────────────────────────────────────
-  //  Log
-  // ─────────────────────────────────────────────────────────
-  function addLog(msg, type) {
-    W.log.unshift({ msg, type, t: W.year });
-    if (W.log.length > 40) W.log.pop();
-  }
-
-  // ─────────────────────────────────────────────────────────
-  //  Simulation
-  // ─────────────────────────────────────────────────────────
-  function updateHero(h) {
-    h.stateTimer--;
-    if (h.state === 'explore') {
-      if (h.stateTimer <= 0) h.stateTimer = 20 + rng(30);
-      if (rngf() < 0.003) {
-        h.loot++; W.totalLoot++; h.maxhp += 2;
-        if (rngf() < 0.4) h.atk++;
-        addLog(`${firstName(h)} found a ${pick(LOOT_NAMES)}!`, 'loot');
-      }
-      let target = W.enemies.find(e => e.hp > 0 && !e.engagedBy);
-      if (target && rngf() < 0.06) {
-        h.state = 'hunt'; h.target = target; target.engagedBy = h;
-        h.stateTimer = 200 + rng(100);
-      }
-    } else if (h.state === 'hunt') {
-      if (!h.target || h.target.hp <= 0 || h.stateTimer <= 0) {
-        if (h.target) h.target.engagedBy = null;
-        h.state = 'explore'; h.target = null; h.stateTimer = 20 + rng(20);
-        return;
-      }
-      if (rngf() < 0.18) {
-        let dmg = h.atk + rng(3);
-        h.target.hp -= dmg;
-        combatEvents.push({ heroName: h.name, type: 'enemy-hit', tick: W.tick });
-        if (h.target.hp <= 0) {
-          const tier = h.target.tier || 1;
-          const suffix = tier >= 4 ? ' — a mighty victory!' : tier === 3 ? ' — a hard-won fight.' : '!';
-          addLog(`${firstName(h)} slew ${h.target.name}${suffix}`, 'combat');
-          h.xp += h.target.xpReward; h.kills++; W.totalKills++; W.totalBattles++;
-          W.enemies = W.enemies.filter(e => e !== h.target);
-          h.state = 'explore'; h.target = null; h.stateTimer = 15;
-          if (h.xp >= h.level * 15) {
-            h.level++; h.xp -= h.level * 15;
-            h.maxhp += 5 + rng(5); h.hp = Math.min(h.hp + 10, h.maxhp); h.atk++;
-            addLog(`${firstName(h)} reached Level ${h.level}!`, 'level');
-          }
+  function connectSSE() {
+    const es = new EventSource('/api/stream');
+    es.onopen = () => setSaveStatus('live ●');
+    es.onerror = () => { setSaveStatus('reconnecting...'); setTimeout(connectSSE, 3000); es.close(); };
+    es.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'state') {
+        W = msg.world;
+        if (msg.combatEvents && msg.combatEvents.length) {
+          combatEvents.push(...msg.combatEvents);
         }
+        renderAll();
+        syncControls(W.speed, W.paused);
+      } else if (msg.type === 'control') {
+        syncControls(msg.speed, msg.paused);
       }
-      if (h.target && rngf() < 0.14) {
-        let dmg = h.target.atk + rng(2);
-        h.hp -= dmg;
-        combatEvents.push({ heroName: h.name, type: 'hero-hit', tick: W.tick });
-        if (h.hp <= 0) {
-          addLog(h.isBlonde ? 'Kael the Stranger has fallen!' : `${firstName(h)} fell to ${h.target.name}...`, 'death');
-          W.totalDeaths++;
-          if (h.target) h.target.engagedBy = null;
-          W.heroes = W.heroes.filter(x => x !== h);
-        } else if (h.hp < h.maxhp * 0.25 && !h.isBlonde) {
-          h.fleeCount++;
-          addLog(`${firstName(h)} flees from ${h.target.name}!`, 'explore');
-          if (h.target) h.target.engagedBy = null;
-          h.state = 'flee'; h.target = null; h.stateTimer = 20 + rng(15);
-        }
-      }
-    } else if (h.state === 'flee') {
-      h.hp = Math.min(h.hp + 1, h.maxhp);
-      if (h.stateTimer <= 0) { h.state = 'explore'; h.stateTimer = 20; }
+    };
+  }
+
+  function syncControls(speed, paused) {
+    document.querySelectorAll('#controls button:not(.danger)').forEach(b => b.classList.remove('active'));
+    if (paused) {
+      document.getElementById('btn-pause').classList.add('active');
+    } else {
+      const map = { 1:'btn-slow', 2:'btn-med', 4:'btn-fast' };
+      const btn = document.getElementById(map[speed]);
+      if (btn) btn.classList.add('active');
     }
   }
 
@@ -1354,8 +1134,8 @@
     if (!W.enemies.length) html = '<div style="color:#9070a8;font-size:13px;padding:6px 0;">None lurking...</div>';
     html += `<div class="threat-footer">
       <div class="mini-stat"><span class="mv">${W.enemies.length}</span><span class="ml">Total</span></div>
-      <div class="mini-stat"><span class="mv">${W.enemies.filter(e => e.engagedBy).length}</span><span class="ml">In battle</span></div>
-      <div class="mini-stat"><span class="mv">${W.enemies.filter(e => !e.engagedBy).length}</span><span class="ml">Roaming</span></div>
+      <div class="mini-stat"><span class="mv">${W.enemies.filter(e => e.engagedByName).length}</span><span class="ml">In battle</span></div>
+      <div class="mini-stat"><span class="mv">${W.enemies.filter(e => !e.engagedByName).length}</span><span class="ml">Roaming</span></div>
     </div>`;
     el.innerHTML = html;
   }
@@ -1365,15 +1145,15 @@
     if (!el) return;
     const top = W.heroes.slice().sort((a, b) => b.kills - a.kills)[0];
     const rows = [
-      ['Year',          W.year,         ''],
-      ['Era',           era(),          ''],
+      ['Year',          W.year,              ''],
+      ['Era',           W.era || 'Age of Shadow', ''],
       ['Monsters slain', W.totalKills,  ''],
       ['Heroes lost',   W.totalDeaths,  ''],
       ['Relics found',  W.totalLoot,    ''],
       ['Battles fought',W.totalBattles, ''],
       ['Living heroes', W.heroes.length,''],
     ];
-    if (top) rows.push(['Champion', `${firstName(top)} (${top.kills})`, 'highlight']);
+    if (top) rows.push(['Champion', `${top.name.split(' ')[0]} (${top.kills})`, 'highlight']);
     el.innerHTML = rows.map(([label, val, cls]) =>
       `<div class="world-stat-row">
         <span class="ws-label">${label}</span>
@@ -1396,66 +1176,30 @@
 
   function updateEra() {
     const el = document.getElementById('era-display');
-    if (el) el.textContent = `Year ${W.year} — ${era()}`;
+    if (el) el.textContent = `Year ${W.year} — ${W.era || 'Age of Shadow'}`;
   }
 
   // ─────────────────────────────────────────────────────────
-  //  Main loop
+  //  Controls — send commands to server
   // ─────────────────────────────────────────────────────────
-  function loop(ts) {
-    requestAnimationFrame(loop);
-    if (!lastTime) lastTime = ts;
-    const dt = ts - lastTime; lastTime = ts;
-    if (paused) return;
-    accumulator += dt * speed;
-    while (accumulator >= STEP_MS) {
-      accumulator -= STEP_MS;
-      W.tick++;
-      for (let h of [...W.heroes]) updateHero(h);
-      if (W.tick % 80  === 0) repopulate();
-      if (W.tick % 600 === 0) {
-        W.year++;
-        addLog(`Year ${W.year} begins. New threats stir in the dark.`, 'explore');
-        for (let i = 0; i < 2; i++) spawnEnemy();
-        updateEra();
-      }
-      if (W.tick % SAVE_INTERVAL_TICKS === 0) saveToServer();
-      if (W.tick % 10 === 0) renderAll();
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────
-  //  Controls
-  // ─────────────────────────────────────────────────────────
-  function setSpeed(s) {
-    speed = s; paused = false;
-    document.querySelectorAll('#controls button:not(.danger)').forEach(b => b.classList.remove('active'));
-  }
-  document.getElementById('btn-slow').onclick  = function() { setSpeed(1); this.classList.add('active'); };
-  document.getElementById('btn-med').onclick   = function() { setSpeed(2); this.classList.add('active'); };
-  document.getElementById('btn-fast').onclick  = function() { setSpeed(4); this.classList.add('active'); };
-  document.getElementById('btn-pause').onclick = function() {
-    paused = !paused;
-    document.querySelectorAll('#controls button:not(.danger)').forEach(b => b.classList.remove('active'));
-    if (paused) this.classList.add('active');
-    else document.getElementById('btn-med').classList.add('active');
-  };
+  document.getElementById('btn-slow').onclick  = () => fetch('/api/speed', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({speed:1}) });
+  document.getElementById('btn-med').onclick   = () => fetch('/api/speed', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({speed:2}) });
+  document.getElementById('btn-fast').onclick  = () => fetch('/api/speed', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({speed:4}) });
+  document.getElementById('btn-pause').onclick = () => fetch('/api/pause', { method:'POST' });
 
   // Reset modal
-  document.getElementById('btn-reset').onclick    = () => document.getElementById('reset-modal').classList.add('open');
+  document.getElementById('btn-reset').onclick     = () => document.getElementById('reset-modal').classList.add('open');
   document.getElementById('modal-cancel').onclick  = () => document.getElementById('reset-modal').classList.remove('open');
-  document.getElementById('modal-confirm').onclick = async () => {
+  document.getElementById('modal-confirm').onclick = () => {
     document.getElementById('reset-modal').classList.remove('open');
-    await resetWorld();
+    fetch('/api/reset', { method:'POST' });
   };
-
-  // Save on page unload
-  window.addEventListener('beforeunload', () => { saveToServer(); });
 
   // ─────────────────────────────────────────────────────────
   //  Boot
   // ─────────────────────────────────────────────────────────
-  loadFromServer().then(() => requestAnimationFrame(loop));
+  setSaveStatus('connecting...');
+  connectSSE();
 })();
 </script>
 </body>
