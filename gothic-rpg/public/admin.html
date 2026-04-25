@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gothic RPG — Admin</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #060008; --bg-panel: #0c000f; --bg-card: #110015;
+      --border: #2a1040; --border2: #1a0830;
+      --purple: #9a60c8; --purple-dim: #7a4a9a;
+      --gold: #e8b830; --red: #cc4444; --green: #44aa55;
+      --text-hi: #e8d8f8; --text-mid: #c0a0e0; --text-lo: #9070a8; --text-dim: #6a4888;
+    }
+    body { background: var(--bg); font-family: 'Courier New', monospace; color: var(--text-mid); padding: 24px 20px 60px; }
+    #app { max-width: 1000px; margin: 0 auto; }
+
+    h1 { font-size: 13px; letter-spacing: 4px; text-transform: uppercase; color: var(--purple); font-weight: normal; margin-bottom: 4px; }
+    .subtitle { font-size: 11px; color: var(--text-lo); letter-spacing: 1px; margin-bottom: 28px; }
+
+    .status-bar { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding: 10px 16px; background: #0e0018; border: 1px solid var(--border); font-size: 11px; }
+    .status-bar span { color: var(--text-lo); letter-spacing: 1px; }
+    .status-bar strong { color: var(--text-hi); }
+
+    .section-title {
+      font-size: 10px; letter-spacing: 3px; color: var(--text-mid);
+      text-transform: uppercase; margin-bottom: 14px; padding-bottom: 6px;
+      border-bottom: 1px solid var(--border2);
+    }
+
+    /* Hero cards */
+    .hero-list { display: flex; flex-direction: column; gap: 16px; }
+
+    .hero-admin-card {
+      background: var(--bg-card); border: 1px solid var(--border2); padding: 16px 18px;
+    }
+    .hero-admin-card.wounded { border-color: #5a3000; }
+    .hero-admin-card.blonde  { border-color: #5a4010; }
+
+    .hero-card-header { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+    .hero-portrait { width: 52px; height: 52px; object-fit: cover; object-position: top center; border: 1px solid var(--border2); flex-shrink: 0; filter: brightness(0.85); }
+    .hero-card-name { font-size: 15px; color: var(--text-hi); letter-spacing: 0.5px; margin-bottom: 3px; }
+    .hero-card-meta { font-size: 11px; color: var(--text-lo); letter-spacing: 1px; }
+    .state-badge {
+      display: inline-block; font-size: 9px; letter-spacing: 1px; padding: 2px 8px;
+      border: 1px solid; text-transform: uppercase; margin-left: 8px;
+    }
+    .state-badge.explore { color: #66bb77; border-color: #154020; }
+    .state-badge.hunt    { color: #e05555; border-color: #5a1515; }
+    .state-badge.flee    { color: #55aaee; border-color: #153060; }
+    .state-badge.wounded { color: #cc8822; border-color: #5a3000; }
+
+    .fields-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px;
+      margin-bottom: 14px;
+    }
+    .field-group { display: flex; flex-direction: column; gap: 4px; }
+    .field-group label { font-size: 9px; letter-spacing: 2px; color: var(--text-lo); text-transform: uppercase; }
+    .field-group input, .field-group select {
+      background: #080010; border: 1px solid var(--border2); color: var(--text-hi);
+      font-family: 'Courier New', monospace; font-size: 13px; padding: 6px 8px;
+      width: 100%; outline: none;
+    }
+    .field-group input:focus, .field-group select:focus { border-color: var(--purple-dim); }
+
+    .card-actions { display: flex; gap: 10px; align-items: center; }
+    .btn {
+      background: #150020; border: 1px solid var(--border); color: var(--text-mid);
+      font-family: 'Courier New', monospace; font-size: 11px; padding: 6px 18px;
+      cursor: pointer; letter-spacing: 1px; text-transform: uppercase; transition: background 0.12s;
+    }
+    .btn:hover { background: #200030; color: var(--text-hi); }
+    .btn.save { border-color: var(--purple-dim); color: var(--purple); }
+    .btn.save:hover { background: #1a0830; }
+    .btn.danger { border-color: #501010; color: #aa3333; }
+    .btn.danger:hover { background: #1e0808; color: var(--red); }
+    .save-msg { font-size: 11px; color: var(--green); letter-spacing: 1px; opacity: 0; transition: opacity 0.3s; }
+    .save-msg.show { opacity: 1; }
+
+    /* World controls */
+    .world-controls { display: flex; gap: 10px; margin-bottom: 28px; flex-wrap: wrap; }
+
+    #toast { position: fixed; bottom: 24px; right: 24px; background: #1a0030; border: 1px solid var(--purple-dim); color: var(--text-hi); font-size: 12px; padding: 10px 18px; letter-spacing: 1px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <h1>⚔ Gothic RPG — Admin Dashboard</h1>
+  <div class="subtitle">Modify hero data in real time. Changes broadcast immediately to all viewers.</div>
+
+  <div class="status-bar">
+    <span>Year: <strong id="st-year">—</strong></span>
+    <span>Era: <strong id="st-era">—</strong></span>
+    <span>Tick: <strong id="st-tick">—</strong></span>
+    <span>Viewers: <strong id="st-viewers">—</strong></span>
+    <span>Speed: <strong id="st-speed">—</strong></span>
+    <span id="st-paused" style="color:#cc8822;display:none;">⏸ PAUSED</span>
+  </div>
+
+  <div class="section-title">World Controls</div>
+  <div class="world-controls">
+    <button class="btn" onclick="setSpeed(1)">1× Speed</button>
+    <button class="btn" onclick="setSpeed(2)">2× Speed</button>
+    <button class="btn" onclick="setSpeed(4)">4× Speed</button>
+    <button class="btn" onclick="togglePause()">⏸ Pause / Resume</button>
+    <button class="btn danger" onclick="confirmReset()">⟳ Reset World</button>
+  </div>
+
+  <div class="section-title">Heroes</div>
+  <div class="hero-list" id="hero-list">
+    <div style="color:var(--text-lo);font-size:12px;">Loading...</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  let W = null;
+
+  // ── SSE ────────────────────────────────────────────────────
+  function connectSSE() {
+    const es = new EventSource('/api/stream');
+    es.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'state') { W = msg.world; render(); }
+    };
+    es.onerror = () => setTimeout(connectSSE, 3000);
+  }
+
+  // ── Render ─────────────────────────────────────────────────
+  function render() {
+    if (!W) return;
+    document.getElementById('st-year').textContent    = W.year;
+    document.getElementById('st-era').textContent     = W.era;
+    document.getElementById('st-tick').textContent    = W.tick;
+    document.getElementById('st-viewers').textContent = W.viewers || 0;
+    document.getElementById('st-speed').textContent   = W.paused ? '—' : W.speed + '×';
+    document.getElementById('st-paused').style.display = W.paused ? '' : 'none';
+
+    const list = document.getElementById('hero-list');
+    // Preserve existing inputs (don't wipe while user is typing)
+    // Only rebuild if hero count changed or names changed
+    const currentNames = [...list.querySelectorAll('.hero-admin-card')].map(c => c.dataset.name);
+    const newNames = W.heroes.map(h => h.name);
+    if (JSON.stringify(currentNames) !== JSON.stringify(newNames)) {
+      list.innerHTML = W.heroes.map(heroCard).join('');
+    } else {
+      // Just update meta labels (state badge, hp display)
+      W.heroes.forEach(h => updateCardMeta(h));
+    }
+  }
+
+  function heroCard(h) {
+    const stateClass = h.state;
+    const stateLabel = h.state === 'hunt' ? '⚔ Hunting' : h.state === 'flee' ? '↪ Fleeing' : h.state === 'wounded' ? '✞ Wounded' : '◈ Exploring';
+    return `
+    <div class="hero-admin-card ${h.isBlonde ? 'blonde' : h.state === 'wounded' ? 'wounded' : ''}" data-name="${h.name}">
+      <div class="hero-card-header">
+        ${h.image ? `<img class="hero-portrait" src="${h.image}" alt="${h.name}">` : ''}
+        <div>
+          <div class="hero-card-name">${h.name}${h.isBlonde ? ' ★' : ''}</div>
+          <div class="hero-card-meta">
+            Lv ${h.level} &nbsp;·&nbsp; ${h.kills} kills &nbsp;·&nbsp; ${h.falls||0} falls
+            <span class="state-badge ${stateClass} hero-state-badge">${stateLabel}</span>
+          </div>
+        </div>
+      </div>
+      <div class="fields-grid">
+        <div class="field-group"><label>HP</label><input type="number" data-field="hp" value="${h.hp}" min="0" max="${h.maxhp}"></div>
+        <div class="field-group"><label>Max HP</label><input type="number" data-field="maxhp" value="${h.maxhp}" min="1"></div>
+        <div class="field-group"><label>ATK</label><input type="number" data-field="atk" value="${h.atk}" min="1"></div>
+        <div class="field-group"><label>XP</label><input type="number" data-field="xp" value="${h.xp}" min="0"></div>
+        <div class="field-group"><label>Level</label><input type="number" data-field="level" value="${h.level}" min="1"></div>
+        <div class="field-group"><label>Kills</label><input type="number" data-field="kills" value="${h.kills}" min="0"></div>
+        <div class="field-group"><label>Loot</label><input type="number" data-field="loot" value="${h.loot}" min="0"></div>
+        <div class="field-group">
+          <label>State</label>
+          <select data-field="state">
+            <option value="explore" ${h.state === 'explore' ? 'selected' : ''}>Exploring</option>
+            <option value="flee"    ${h.state === 'flee'    ? 'selected' : ''}>Fleeing</option>
+            <option value="wounded" ${h.state === 'wounded' ? 'selected' : ''}>Wounded</option>
+          </select>
+        </div>
+      </div>
+      <div class="card-actions">
+        <button class="btn save" onclick="saveHero('${h.name}', this)">Save Changes</button>
+        <button class="btn danger" onclick="woundHero('${h.name}')">Force Wound</button>
+        <span class="save-msg" id="msg-${h.name.replace(/\s/g,'_')}">Saved ✓</span>
+      </div>
+    </div>`;
+  }
+
+  function updateCardMeta(h) {
+    const card = document.querySelector(`.hero-admin-card[data-name="${h.name}"]`);
+    if (!card) return;
+    const badge = card.querySelector('.hero-state-badge');
+    if (badge) {
+      const stateLabel = h.state === 'hunt' ? '⚔ Hunting' : h.state === 'flee' ? '↪ Fleeing' : h.state === 'wounded' ? '✞ Wounded' : '◈ Exploring';
+      badge.textContent = stateLabel;
+      badge.className = `state-badge ${h.state} hero-state-badge`;
+    }
+  }
+
+  // ── Actions ────────────────────────────────────────────────
+  function getHeroFields(name) {
+    const card = document.querySelector(`.hero-admin-card[data-name="${name}"]`);
+    if (!card) return {};
+    const data = { name };
+    card.querySelectorAll('[data-field]').forEach(el => { data[el.dataset.field] = el.value; });
+    return data;
+  }
+
+  async function saveHero(name, btn) {
+    const payload = getHeroFields(name);
+    const res = await fetch('/api/admin/hero', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      const msgEl = document.getElementById('msg-' + name.replace(/\s/g,'_'));
+      if (msgEl) { msgEl.classList.add('show'); setTimeout(() => msgEl.classList.remove('show'), 2000); }
+    } else {
+      showToast('Save failed — check console');
+    }
+  }
+
+  async function woundHero(name) {
+    await fetch('/api/admin/hero', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, state: 'wounded', hp: '1' })
+    });
+    showToast(`${name} forced into wounded state`);
+  }
+
+  async function setSpeed(s) {
+    await fetch('/api/speed', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({speed:s}) });
+  }
+
+  async function togglePause() {
+    await fetch('/api/pause', { method:'POST' });
+  }
+
+  async function confirmReset() {
+    if (confirm('Reset the entire world? This cannot be undone.')) {
+      await fetch('/api/reset', { method:'POST' });
+      showToast('World reset.');
+    }
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  connectSSE();
+</script>
+</body>
+</html>

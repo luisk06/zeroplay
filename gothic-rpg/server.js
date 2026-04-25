@@ -9,10 +9,9 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Persistence helpers (local file, falls back silently when read-only)
+//  Persistence
 // ─────────────────────────────────────────────────────────────────────────────
 const SAVE_FILE = path.join(__dirname, 'save.json');
-
 let redisClient = null;
 async function getRedis() {
   if (redisClient) return redisClient;
@@ -22,34 +21,39 @@ async function getRedis() {
   }
   return redisClient;
 }
-
 const WORLD_KEY = 'gothic-rpg:world';
 
 async function loadState() {
-  // Try Redis first
   const redis = await getRedis();
   if (redis) {
-    try {
-      const s = await redis.get(WORLD_KEY);
-      if (s) return s;
-    } catch (e) { console.error('Redis load error:', e.message); }
+    try { const s = await redis.get(WORLD_KEY); if (s) return s; } catch (e) { console.error('Redis load:', e.message); }
   }
-  // Fall back to local file
-  try {
-    if (fs.existsSync(SAVE_FILE)) return JSON.parse(fs.readFileSync(SAVE_FILE, 'utf8'));
-  } catch (e) { console.error('File load error:', e.message); }
+  try { if (fs.existsSync(SAVE_FILE)) return JSON.parse(fs.readFileSync(SAVE_FILE, 'utf8')); } catch (e) {}
   return null;
 }
 
-async function saveState(state) {
-  const clean = serializeWorld(state);
-  // Redis
+async function saveState(w) {
+  const clean = serializeWorld(w);
   const redis = await getRedis();
-  if (redis) {
-    try { await redis.set(WORLD_KEY, clean); } catch (e) { console.error('Redis save error:', e.message); }
-  }
-  // Local file
+  if (redis) { try { await redis.set(WORLD_KEY, clean); } catch (e) { console.error('Redis save:', e.message); } }
   try { fs.writeFileSync(SAVE_FILE, JSON.stringify(clean, null, 2), 'utf8'); } catch (e) {}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Admin auth middleware
+// ─────────────────────────────────────────────────────────────────────────────
+const ADMIN_USER = process.env.ADMIN_USER || 'admin';
+const ADMIN_PASS = process.env.ADMIN_PASS || 'gothic2025';
+
+function requireAdmin(req, res, next) {
+  const auth = req.headers['authorization'] || '';
+  const [type, encoded] = auth.split(' ');
+  if (type === 'Basic' && encoded) {
+    const [user, pass] = Buffer.from(encoded, 'base64').toString().split(':');
+    if (user === ADMIN_USER && pass === ADMIN_PASS) return next();
+  }
+  res.setHeader('WWW-Authenticate', 'Basic realm="Gothic RPG Admin"');
+  res.status(401).send('Unauthorized');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,20 +75,17 @@ const ENEMY_STATS  = {
 };
 const LOOT_NAMES   = ['Tome','Blade','Relic','Crystal','Potion','Amulet','Shield'];
 const STEP_MS      = 120;
-const SAVE_INTERVAL_TICKS = 300;
+const SAVE_INTERVAL_TICKS     = 300;
 const BROADCAST_INTERVAL_TICKS = 10;
+// How long a wounded hero is out of action (in ticks)
+const WOUNDED_RECOVERY_TICKS  = 300;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  World state
 // ─────────────────────────────────────────────────────────────────────────────
-let W = {
-  tick:0, year:1,
-  totalKills:0, totalDeaths:0, totalLoot:0, totalBattles:0,
-  heroes:[], enemies:[], log:[]
-};
+let W = { tick:0, year:1, totalKills:0, totalDeaths:0, totalLoot:0, totalBattles:0, heroes:[], enemies:[], log:[] };
 let simSpeed  = 2;
 let simPaused = false;
-// Combat events to broadcast: [{heroName, type:'hero-hit'|'enemy-hit'}]
 let pendingCombatEvents = [];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,30 +95,20 @@ function rng(n)  { return Math.floor(Math.random() * n); }
 function rngf()  { return Math.random(); }
 function pick(a) { return a[rng(a.length)]; }
 function firstName(h) { return h.name.split(' ')[0]; }
-
 function era() {
-  return W.year < 10 ? 'Age of Shadow'
-       : W.year < 25 ? 'Age of Blood'
-       : W.year < 50 ? 'Age of Ash'
-       :                'Age of Ruin';
+  return W.year < 10 ? 'Age of Shadow' : W.year < 25 ? 'Age of Blood' : W.year < 50 ? 'Age of Ash' : 'Age of Ruin';
 }
 
-function defaultState() {
-  return { tick:0, year:1, totalKills:0, totalDeaths:0, totalLoot:0, totalBattles:0, heroes:[], enemies:[], log:[], savedAt:null };
-}
-
-// Strip circular refs for serialization
 function serializeWorld(w) {
   return {
-    tick: w.tick, year: w.year,
-    totalKills: w.totalKills, totalDeaths: w.totalDeaths,
-    totalLoot: w.totalLoot, totalBattles: w.totalBattles,
+    tick:w.tick, year:w.year,
+    totalKills:w.totalKills, totalDeaths:w.totalDeaths, totalLoot:w.totalLoot, totalBattles:w.totalBattles,
     heroes: w.heroes.map(h => ({
-      name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk,
+      name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk, baseAtk:h.baseAtk,
       xp:h.xp, level:h.level, loot:h.loot, kills:h.kills,
-      color:h.color, state: h.state === 'hunt' ? 'explore' : h.state,
-      stateTimer:h.stateTimer, isBlonde:h.isBlonde, fleeCount:h.fleeCount, image:h.image,
-      targetName: h.target ? h.target.name : null
+      color:h.color, state: (h.state === 'hunt' || h.state === 'wounded') ? h.state : 'explore',
+      stateTimer:h.stateTimer, isBlonde:h.isBlonde, fleeCount:h.fleeCount,
+      falls:h.falls||0, image:h.image
     })),
     enemies: w.enemies.map(e => ({
       id:e.id, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,
@@ -129,18 +120,16 @@ function serializeWorld(w) {
   };
 }
 
-// Full world snapshot to send to clients (includes live target data for arena)
 function liveSnapshot() {
   return {
-    tick: W.tick, year: W.year, era: era(),
-    totalKills: W.totalKills, totalDeaths: W.totalDeaths,
-    totalLoot: W.totalLoot, totalBattles: W.totalBattles,
-    speed: simSpeed, paused: simPaused,
+    tick:W.tick, year:W.year, era:era(),
+    totalKills:W.totalKills, totalDeaths:W.totalDeaths, totalLoot:W.totalLoot, totalBattles:W.totalBattles,
+    speed:simSpeed, paused:simPaused, viewers: clients.size,
     heroes: W.heroes.map(h => ({
-      name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk,
+      name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk, baseAtk:h.baseAtk,
       xp:h.xp, level:h.level, loot:h.loot, kills:h.kills,
       color:h.color, state:h.state, stateTimer:h.stateTimer,
-      isBlonde:h.isBlonde, fleeCount:h.fleeCount, image:h.image,
+      isBlonde:h.isBlonde, fleeCount:h.fleeCount, falls:h.falls||0, image:h.image,
       target: h.target ? { name:h.target.name, hp:h.target.hp, maxhp:h.target.maxhp } : null
     })),
     enemies: W.enemies.map(e => ({
@@ -162,12 +151,13 @@ function spawnHero(forceBlonde) {
   const usedImages = new Set(W.heroes.map(h => h.image));
   const availImages = HERO_IMAGES.filter(i => !usedImages.has(i));
   const image = availImages.length ? pick(availImages) : pick(HERO_IMAGES);
+  const baseAtk = isBlonde ? 6 : 3 + rng(4);
   W.heroes.push({
     name:      isBlonde ? 'Kael the Stranger' : HERO_NAMES[rng(HERO_NAMES.length)] + ' ' + pick(HERO_TITLES),
     hp:        isBlonde ? 35 : 20 + rng(10),
     maxhp:     isBlonde ? 35 : 30,
-    atk:       isBlonde ? 6  : 3 + rng(4),
-    xp:0, level:1, loot:0, kills:0,
+    atk: baseAtk, baseAtk,
+    xp:0, level:1, loot:0, kills:0, falls:0,
     color: isBlonde ? '#e8b830' : HERO_COLORS[rng(HERO_COLORS.length)],
     state:'explore', target:null, stateTimer:0,
     isBlonde, fleeCount:0, image
@@ -201,10 +191,55 @@ function addLog(msg, type) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Hero defeat consequences (no permadeath)
+// ─────────────────────────────────────────────────────────────────────────────
+function defeatHero(h) {
+  W.totalDeaths++;
+  h.falls = (h.falls || 0) + 1;
+
+  // Disengage from enemy
+  if (h.target) { h.target.engagedBy = null; h.target = null; }
+
+  // XP penalty — lose 30%, can't go below 0
+  const xpLost = Math.floor(h.xp * 0.30);
+  h.xp = Math.max(0, h.xp - xpLost);
+
+  // ATK penalty — lose 1 point per fall, floored at baseAtk
+  if (h.atk > (h.baseAtk || 1)) h.atk--;
+
+  // HP reset to 25%
+  h.hp = Math.max(1, Math.floor(h.maxhp * 0.25));
+
+  // Enter wounded state
+  h.state = 'wounded';
+  h.stateTimer = WOUNDED_RECOVERY_TICKS + rng(100);
+
+  const penalty = xpLost > 0 ? ` Lost ${xpLost} XP.` : '';
+  if (h.isBlonde) {
+    addLog(`Kael the Stranger has fallen and lies wounded!${penalty}`, 'death');
+  } else {
+    addLog(`${firstName(h)} was defeated and crawls away to recover.${penalty}`, 'death');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Simulation tick
 // ─────────────────────────────────────────────────────────────────────────────
 function updateHero(h) {
   h.stateTimer--;
+
+  if (h.state === 'wounded') {
+    // Slowly recover HP while wounded
+    h.hp = Math.min(h.hp + 1, Math.floor(h.maxhp * 0.5));
+    if (h.stateTimer <= 0) {
+      h.state = 'explore';
+      h.hp = Math.floor(h.maxhp * 0.5); // return at half HP
+      h.stateTimer = 20 + rng(20);
+      addLog(`${firstName(h)} returns to the field, scarred but resolute.`, 'explore');
+    }
+    return;
+  }
+
   if (h.state === 'explore') {
     if (h.stateTimer <= 0) h.stateTimer = 20 + rng(30);
     if (rngf() < 0.003) {
@@ -246,10 +281,7 @@ function updateHero(h) {
       h.hp -= dmg;
       pendingCombatEvents.push({ heroName:h.name, type:'hero-hit' });
       if (h.hp <= 0) {
-        addLog(h.isBlonde ? 'Kael the Stranger has fallen!' : `${firstName(h)} fell to ${h.target.name}...`, 'death');
-        W.totalDeaths++;
-        if (h.target) h.target.engagedBy = null;
-        W.heroes = W.heroes.filter(x => x !== h);
+        defeatHero(h); // <-- defeat with consequences, no removal
       } else if (h.hp < h.maxhp * 0.25 && !h.isBlonde) {
         h.fleeCount++;
         addLog(`${firstName(h)} flees from ${h.target.name}!`, 'explore');
@@ -274,14 +306,12 @@ function tick() {
   }
   if (W.tick % SAVE_INTERVAL_TICKS === 0) saveState(W).catch(() => {});
   if (W.tick % BROADCAST_INTERVAL_TICKS === 0) {
-    const snapshot = liveSnapshot();
-    const events   = pendingCombatEvents.splice(0);
-    broadcast({ type:'state', world: snapshot, combatEvents: events });
+    broadcast({ type:'state', world: liveSnapshot(), combatEvents: pendingCombatEvents.splice(0) });
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SSE broadcast
+//  SSE — viewer count included in every broadcast
 // ─────────────────────────────────────────────────────────────────────────────
 const clients = new Set();
 
@@ -299,11 +329,15 @@ app.get('/api/stream', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.flushHeaders();
 
-  // Send current snapshot immediately on connect
+  clients.add(res);
+  // Send snapshot immediately — clients.size now includes this client
   res.write(`data: ${JSON.stringify({ type:'state', world: liveSnapshot(), combatEvents:[] })}\n\n`);
 
-  clients.add(res);
-  req.on('close', () => clients.delete(res));
+  req.on('close', () => {
+    clients.delete(res);
+    // Broadcast updated viewer count
+    broadcast({ type:'viewers', viewers: clients.size });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -323,12 +357,9 @@ app.post('/api/pause', (req, res) => {
 });
 
 app.post('/api/reset', async (req, res) => {
-  // Clear Redis
   const redis = await getRedis();
   if (redis) { try { await redis.del(WORLD_KEY); } catch(e) {} }
-  // Clear local file
   try { if (fs.existsSync(SAVE_FILE)) fs.unlinkSync(SAVE_FILE); } catch(e) {}
-  // Reset world
   W = { tick:0, year:1, totalKills:0, totalDeaths:0, totalLoot:0, totalBattles:0, heroes:[], enemies:[], log:[] };
   addLog('The world has been unmade. All begins anew.', 'explore');
   repopulate();
@@ -337,32 +368,67 @@ app.post('/api/reset', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Boot: load saved state, then start loop
+//  Admin endpoints (protected)
+// ─────────────────────────────────────────────────────────────────────────────
+// Serve admin page
+app.get('/admin', requireAdmin, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// Get full hero list for admin
+app.get('/api/admin/heroes', requireAdmin, (req, res) => {
+  res.json(W.heroes.map(h => ({
+    name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk, baseAtk:h.baseAtk,
+    xp:h.xp, level:h.level, loot:h.loot, kills:h.kills,
+    state:h.state, falls:h.falls||0, isBlonde:h.isBlonde, image:h.image,
+    fleeCount:h.fleeCount
+  })));
+});
+
+// Update a specific hero's fields
+app.post('/api/admin/hero', requireAdmin, (req, res) => {
+  const { name, hp, maxhp, atk, xp, level, kills, loot, state } = req.body;
+  const hero = W.heroes.find(h => h.name === name);
+  if (!hero) return res.status(404).json({ error: 'Hero not found' });
+
+  if (hp    !== undefined) hero.hp    = Math.max(0, parseInt(hp));
+  if (maxhp !== undefined) hero.maxhp = Math.max(1, parseInt(maxhp));
+  if (atk   !== undefined) { hero.atk = Math.max(1, parseInt(atk)); hero.baseAtk = hero.baseAtk || hero.atk; }
+  if (xp    !== undefined) hero.xp    = Math.max(0, parseInt(xp));
+  if (level !== undefined) hero.level = Math.max(1, parseInt(level));
+  if (kills !== undefined) hero.kills = Math.max(0, parseInt(kills));
+  if (loot  !== undefined) hero.loot  = Math.max(0, parseInt(loot));
+  if (state && ['explore','wounded','flee'].includes(state)) {
+    if (hero.target) { hero.target.engagedBy = null; hero.target = null; }
+    hero.state = state;
+    hero.stateTimer = 30;
+  }
+
+  addLog(`[ADMIN] ${name} stats modified.`, 'explore');
+  broadcast({ type:'state', world: liveSnapshot(), combatEvents:[] });
+  res.json({ ok:true });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Boot
 // ─────────────────────────────────────────────────────────────────────────────
 async function boot() {
   const saved = await loadState();
   if (saved && saved.tick !== undefined) {
-    W.tick         = saved.tick         || 0;
-    W.year         = saved.year         || 1;
-    W.totalKills   = saved.totalKills   || 0;
-    W.totalDeaths  = saved.totalDeaths  || 0;
-    W.totalLoot    = saved.totalLoot    || 0;
-    W.totalBattles = saved.totalBattles || 0;
-    W.log          = saved.log          || [];
-    // Restore heroes
+    W.tick = saved.tick || 0; W.year = saved.year || 1;
+    W.totalKills = saved.totalKills || 0; W.totalDeaths = saved.totalDeaths || 0;
+    W.totalLoot = saved.totalLoot || 0; W.totalBattles = saved.totalBattles || 0;
+    W.log = saved.log || [];
     W.heroes = (saved.heroes || []).map(h => ({
-      name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk,
-      xp:h.xp||0, level:h.level||1, loot:h.loot||0, kills:h.kills||0,
-      color:h.color||'#7060d0', state:'explore', target:null, stateTimer:0,
-      isBlonde:h.isBlonde||false, fleeCount:h.fleeCount||0,
-      image:h.image||HERO_IMAGES[0]
+      name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk, baseAtk:h.baseAtk||h.atk,
+      xp:h.xp||0, level:h.level||1, loot:h.loot||0, kills:h.kills||0, falls:h.falls||0,
+      color:h.color||'#7060d0', state: h.state === 'wounded' ? 'wounded' : 'explore',
+      target:null, stateTimer: h.state === 'wounded' ? (h.stateTimer||WOUNDED_RECOVERY_TICKS) : 0,
+      isBlonde:h.isBlonde||false, fleeCount:h.fleeCount||0, image:h.image||HERO_IMAGES[0]
     }));
-    // Restore enemies
     W.enemies = (saved.enemies || []).map(e => ({
-      id: enemyIdCounter++,
-      name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,
-      xpReward:e.xpReward||5, tier:e.tier||1,
-      state:'patrol', engagedBy:null
+      id:enemyIdCounter++, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,
+      xpReward:e.xpReward||5, tier:e.tier||1, state:'patrol', engagedBy:null
     }));
     console.log(`World restored — Year ${W.year}, Tick ${W.tick}`);
   } else {
@@ -370,9 +436,8 @@ async function boot() {
   }
   repopulate();
 
-  app.listen(PORT, () => console.log(`Gothic RPG server running at http://localhost:${PORT}`));
+  app.listen(PORT, () => console.log(`Gothic RPG server at http://localhost:${PORT}`));
 
-  // Simulation loop
   let lastTick = Date.now();
   setInterval(() => {
     if (simPaused) return;

@@ -158,6 +158,7 @@
     .hero-card.hunting  { border-color: #5a1a1a; }
     .hero-card.fleeing  { border-color: #1a2a5a; }
     .hero-card.blonde   { border-color: #5a4010; }
+    .hero-card.wounded  { border-color: #4a2a00; }
 
     /* accent stripe on left edge */
     .hero-card::before {
@@ -171,6 +172,7 @@
     .hero-card.fleeing::before  { background: var(--blue); opacity: 0.6; }
     .hero-card.exploring::before { background: var(--purple-dim); opacity: 0.4; }
     .hero-card.blonde::before   { background: var(--gold); opacity: 0.7; }
+    .hero-card.wounded::before  { background: #aa6600; opacity: 0.7; }
 
     .hero-card-top {
       display: flex;
@@ -210,9 +212,10 @@
       text-transform: uppercase;
     }
     .tag-level  { color: #b090e0; border-color: #3a2060; background: #180828; }
-    .tag-state-hunt   { color: #e05555; border-color: #5a1515; background: #1a0808; }
-    .tag-state-flee   { color: #55aaee; border-color: #153060; background: #080818; }
-    .tag-state-explore{ color: #66bb77; border-color: #154020; background: #081008; }
+    .tag-state-hunt    { color: #e05555; border-color: #5a1515; background: #1a0808; }
+    .tag-state-flee    { color: #55aaee; border-color: #153060; background: #080818; }
+    .tag-state-explore { color: #66bb77; border-color: #154020; background: #081008; }
+    .tag-state-wounded { color: #cc8822; border-color: #5a3000; background: #1a0c00; }
 
     /* HP bar */
     .hp-track {
@@ -616,6 +619,7 @@
       <button id="btn-fast">4×</button>
       <button id="btn-pause">&#9646;&#9646;</button>
       <span id="save-status">loading...</span>
+      <span id="viewer-count" style="font-size:10px;color:var(--text-lo);letter-spacing:1px;margin-left:6px;"></span>
       <button id="btn-reset" class="danger">⟳ Reset</button>
     </div>
   </div>
@@ -693,6 +697,11 @@
     if (el) el.textContent = msg;
   }
 
+  function setViewerCount(n) {
+    const el = document.getElementById('viewer-count');
+    if (el) el.textContent = n === 1 ? '● 1 viewer' : `● ${n} viewers`;
+  }
+
   // ─────────────────────────────────────────────────────────
   //  SSE connection
   // ─────────────────────────────────────────────────────────
@@ -704,13 +713,14 @@
       const msg = JSON.parse(e.data);
       if (msg.type === 'state') {
         W = msg.world;
-        if (msg.combatEvents && msg.combatEvents.length) {
-          combatEvents.push(...msg.combatEvents);
-        }
+        if (msg.combatEvents && msg.combatEvents.length) combatEvents.push(...msg.combatEvents);
         renderAll();
         syncControls(W.speed, W.paused);
+        setViewerCount(W.viewers || 0);
       } else if (msg.type === 'control') {
         syncControls(msg.speed, msg.paused);
+      } else if (msg.type === 'viewers') {
+        setViewerCount(msg.viewers || 0);
       }
     };
   }
@@ -798,10 +808,10 @@
       const pct      = Math.max(0, h.hp / h.maxhp);
       const bar      = pct > 0.6 ? '#3a9a3a' : pct > 0.3 ? '#aaaa22' : '#aa2222';
       const xpPct    = Math.min(1, h.xp / (h.level * 15));
-      const stateKey = h.state === 'hunt' ? 'hunt' : h.state === 'flee' ? 'flee' : 'explore';
-      const stateLabel = stateKey === 'hunt' ? '⚔ Hunting' : stateKey === 'flee' ? '↪ Fleeing' : '◈ Exploring';
-      const stateClass = stateKey === 'hunt' ? 'tag-state-hunt' : stateKey === 'flee' ? 'tag-state-flee' : 'tag-state-explore';
-      const cardClass  = h.isBlonde ? 'blonde' : stateKey === 'hunt' ? 'hunting' : stateKey === 'flee' ? 'fleeing' : 'exploring';
+      const stateKey = h.state === 'hunt' ? 'hunt' : h.state === 'flee' ? 'flee' : h.state === 'wounded' ? 'wounded' : 'explore';
+      const stateLabel = stateKey === 'hunt' ? '⚔ Hunting' : stateKey === 'flee' ? '↪ Fleeing' : stateKey === 'wounded' ? '✞ Wounded' : '◈ Exploring';
+      const stateClass = stateKey === 'hunt' ? 'tag-state-hunt' : stateKey === 'flee' ? 'tag-state-flee' : stateKey === 'wounded' ? 'tag-state-wounded' : 'tag-state-explore';
+      const cardClass  = h.isBlonde ? 'blonde' : stateKey === 'hunt' ? 'hunting' : stateKey === 'flee' ? 'fleeing' : stateKey === 'wounded' ? 'wounded' : 'exploring';
       const rank       = getRank(h.level);
       const isSelected = h.name === selectedHeroName;
       return `<div class="hero-card ${cardClass}${isSelected ? ' selected' : ''}" data-name="${h.name}" onclick="selectHero('${h.name.replace(/'/g,"\\'")}')">
@@ -824,7 +834,7 @@
           <div class="stat-chip"><span class="val">${h.atk}</span><span class="lbl">ATK</span></div>
           <div class="stat-chip"><span class="val">${h.kills}</span><span class="lbl">Kills</span></div>
           <div class="stat-chip"><span class="val">${h.loot}</span><span class="lbl">Loot</span></div>
-          <div class="stat-chip"><span class="val">${h.level * 15 - h.xp}</span><span class="lbl">XP left</span></div>
+          <div class="stat-chip"><span class="val" style="${(h.falls||0)>0?'color:#cc8822;':''}">${h.falls||0}</span><span class="lbl">Falls</span></div>
         </div>
       </div>`;
     }).join('');
@@ -855,9 +865,9 @@
     const pct       = Math.max(0, h.hp / h.maxhp);
     const hpBar     = pct > 0.6 ? '#3a9a3a' : pct > 0.3 ? '#aaaa22' : '#aa2222';
     const xpPct     = Math.min(1, h.xp / (h.level * 15));
-    const stateKey  = h.state === 'hunt' ? 'hunt' : h.state === 'flee' ? 'flee' : 'explore';
-    const stateLabel= stateKey === 'hunt' ? '⚔ Hunting' : stateKey === 'flee' ? '↪ Fleeing' : '◈ Exploring';
-    const stateClass= stateKey === 'hunt' ? 'tag-state-hunt' : stateKey === 'flee' ? 'tag-state-flee' : 'tag-state-explore';
+    const stateKey  = h.state === 'hunt' ? 'hunt' : h.state === 'flee' ? 'flee' : h.state === 'wounded' ? 'wounded' : 'explore';
+    const stateLabel= stateKey === 'hunt' ? '⚔ Hunting' : stateKey === 'flee' ? '↪ Fleeing' : stateKey === 'wounded' ? '✞ Wounded' : '◈ Exploring';
+    const stateClass= stateKey === 'hunt' ? 'tag-state-hunt' : stateKey === 'flee' ? 'tag-state-flee' : stateKey === 'wounded' ? 'tag-state-wounded' : 'tag-state-explore';
 
     // Build rank progression strip
     const rankStrip = RANKS.map(r => {
@@ -940,6 +950,7 @@
               <div class="detail-stat"><span class="dsv patch-stat-retreats">${h.fleeCount}</span><span class="dsl">Retreats</span></div>
               <div class="detail-stat"><span class="dsv patch-stat-level">${h.level}</span><span class="dsl">Level</span></div>
               <div class="detail-stat"><span class="dsv patch-stat-maxhp">${h.maxhp}</span><span class="dsl">Max HP</span></div>
+              <div class="detail-stat"><span class="dsv patch-stat-falls" style="${(h.falls||0)>0?'color:#cc8822;':''}">${h.falls||0}</span><span class="dsl">Falls</span></div>
             </div>
           </div>
 
@@ -963,9 +974,9 @@
     const pct    = Math.max(0, h.hp / h.maxhp);
     const hpBar  = pct > 0.6 ? '#3a9a3a' : pct > 0.3 ? '#aaaa22' : '#aa2222';
     const xpPct  = Math.min(1, h.xp / (h.level * 15));
-    const stateKey   = h.state === 'hunt' ? 'hunt' : h.state === 'flee' ? 'flee' : 'explore';
-    const stateLabel = stateKey === 'hunt' ? '⚔ Hunting' : stateKey === 'flee' ? '↪ Fleeing' : '◈ Exploring';
-    const stateClass = stateKey === 'hunt' ? 'tag-state-hunt' : stateKey === 'flee' ? 'tag-state-flee' : 'tag-state-explore';
+    const stateKey   = h.state === 'hunt' ? 'hunt' : h.state === 'flee' ? 'flee' : h.state === 'wounded' ? 'wounded' : 'explore';
+    const stateLabel = stateKey === 'hunt' ? '⚔ Hunting' : stateKey === 'flee' ? '↪ Fleeing' : stateKey === 'wounded' ? '✞ Wounded' : '◈ Exploring';
+    const stateClass = stateKey === 'hunt' ? 'tag-state-hunt' : stateKey === 'flee' ? 'tag-state-flee' : stateKey === 'wounded' ? 'tag-state-wounded' : 'tag-state-explore';
 
     function set(id, text) { const el = panel.querySelector(id); if (el) el.textContent = text; }
     function style(id, prop, val) { const el = panel.querySelector(id); if (el) el.style[prop] = val; }
@@ -998,6 +1009,8 @@
     set('.patch-stat-retreats', h.fleeCount);
     set('.patch-stat-level',    h.level);
     set('.patch-stat-maxhp',    h.maxhp);
+    const fallsEl = panel.querySelector('.patch-stat-falls');
+    if (fallsEl) { fallsEl.textContent = h.falls||0; fallsEl.style.color = (h.falls||0) > 0 ? '#cc8822' : ''; }
 
     // Combat arena — show/hide + update HP bars
     const arenaSection = panel.querySelector('.patch-arena-section');
