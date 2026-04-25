@@ -525,6 +525,41 @@
 
     .detail-log { }
 
+    /* ── Arena shake animation ── */
+    @keyframes shake-hero {
+      0%   { transform: translateX(0); }
+      20%  { transform: translateX(-8px); }
+      40%  { transform: translateX(6px); }
+      60%  { transform: translateX(-4px); }
+      80%  { transform: translateX(3px); }
+      100% { transform: translateX(0); }
+    }
+    @keyframes shake-enemy {
+      0%   { transform: translateX(0); }
+      20%  { transform: translateX(8px); }
+      40%  { transform: translateX(-6px); }
+      60%  { transform: translateX(4px); }
+      80%  { transform: translateX(-3px); }
+      100% { transform: translateX(0); }
+    }
+    .arena-fighter { transform-origin: center; }
+    .shake-hero  { animation: shake-hero  0.32s ease-out; }
+    .shake-enemy { animation: shake-enemy 0.32s ease-out; }
+
+    /* ── Arena section wrapper ── */
+    .arena-section {
+      margin: 0 0 16px;
+    }
+    .arena-section-label {
+      font-size: 9px; letter-spacing: 3px; color: var(--red);
+      text-transform: uppercase; margin-bottom: 8px;
+      border-bottom: 1px solid #3a0a18; padding-bottom: 4px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .arena-section-label::before {
+      content: '⚔'; font-size: 10px;
+    }
+
     /* ── Reset modal ── */
     #reset-modal {
       display: none;
@@ -950,6 +985,7 @@
   let selectedHeroName = null;
 
   function renderAll() {
+    processCombatEvents();
     renderHeroes();
     renderThreats();
     renderStats();
@@ -989,6 +1025,7 @@
       const rank       = getRank(h.level);
       const isSelected = h.name === selectedHeroName;
       return `<div class="hero-card ${cardClass}${isSelected ? ' selected' : ''}" data-name="${h.name}" onclick="selectHero('${h.name.replace(/'/g,"\\'")}')">
+        ${h.image ? `<img class="hero-card-img" src="${h.image}" alt="${h.name}">` : ''}
         <div class="hero-card-top">
           <div class="hero-avatar" style="background:${h.color}22;border-color:${h.color}55;color:${h.color};">${h.isBlonde ? '★' : h.name[0]}</div>
           <div class="hero-info">
@@ -1077,6 +1114,28 @@
           </div>
         </div>
 
+        ${h.state === 'hunt' && h.target ? `
+        <div class="arena-section patch-arena-section">
+          <div class="arena-section-label">In Combat</div>
+          <div class="combat-arena">
+            <div class="arena-fighter arena-hero-fighter">
+              <img class="arena-hero-img" src="${h.image || 'character.gif'}" alt="${h.name}">
+              <div class="arena-hp-bar">
+                <div class="arena-hp-fill patch-arena-hero-hp" style="width:${Math.round(Math.max(0,h.hp/h.maxhp)*100)}%;background:${h.hp/h.maxhp>0.5?'#3a9a3a':h.hp/h.maxhp>0.25?'#aaaa22':'#aa2222'};"></div>
+              </div>
+              <div class="arena-fighter-label">${h.name}</div>
+            </div>
+            <div class="arena-vs"><span>VS</span></div>
+            <div class="arena-fighter arena-enemy-fighter">
+              <img class="arena-enemy-img" src="${ENEMY_IMAGES[h.target.name] || ''}" alt="${h.target.name}">
+              <div class="arena-hp-bar">
+                <div class="arena-hp-fill patch-arena-enemy-hp" style="width:${Math.round(Math.max(0,h.target.hp/h.target.maxhp)*100)}%;background:#882233;"></div>
+              </div>
+              <div class="arena-fighter-label">${h.target.name}</div>
+            </div>
+          </div>
+        </div>` : `<div class="patch-arena-section" style="display:none;"></div>`}
+
         <div class="detail-body">
 
           <div class="detail-col">
@@ -1160,6 +1219,52 @@
     set('.patch-stat-level',    h.level);
     set('.patch-stat-maxhp',    h.maxhp);
 
+    // Combat arena — show/hide + update HP bars
+    const arenaSection = panel.querySelector('.patch-arena-section');
+    if (arenaSection) {
+      if (h.state === 'hunt' && h.target) {
+        // If arena not built yet, do a full rebuild (hero just entered combat)
+        if (arenaSection.style.display === 'none' || !arenaSection.querySelector('.combat-arena')) {
+          const heroHpPct = Math.max(0, h.hp / h.maxhp);
+          const eneHpPct  = Math.max(0, h.target.hp / h.target.maxhp);
+          arenaSection.style.display = '';
+          arenaSection.innerHTML = `
+            <div class="arena-section-label">In Combat</div>
+            <div class="combat-arena">
+              <div class="arena-fighter arena-hero-fighter">
+                <img class="arena-hero-img" src="${h.image || 'character.gif'}" alt="${h.name}">
+                <div class="arena-hp-bar">
+                  <div class="arena-hp-fill patch-arena-hero-hp" style="width:${Math.round(heroHpPct*100)}%;background:${heroHpPct>0.5?'#3a9a3a':heroHpPct>0.25?'#aaaa22':'#aa2222'};"></div>
+                </div>
+                <div class="arena-fighter-label">${h.name}</div>
+              </div>
+              <div class="arena-vs"><span>VS</span></div>
+              <div class="arena-fighter arena-enemy-fighter">
+                <img class="arena-enemy-img" src="${ENEMY_IMAGES[h.target.name] || ''}" alt="${h.target.name}">
+                <div class="arena-hp-bar">
+                  <div class="arena-hp-fill patch-arena-enemy-hp" style="width:${Math.round(eneHpPct*100)}%;background:#882233;"></div>
+                </div>
+                <div class="arena-fighter-label">${h.target.name}</div>
+              </div>
+            </div>`;
+        } else {
+          // Just update HP fills
+          const heroHpPct = Math.max(0, h.hp / h.maxhp);
+          const eneHpPct  = Math.max(0, h.target.hp / h.target.maxhp);
+          const heroFill  = arenaSection.querySelector('.patch-arena-hero-hp');
+          const eneFill   = arenaSection.querySelector('.patch-arena-enemy-hp');
+          if (heroFill) {
+            heroFill.style.width = Math.round(heroHpPct * 100) + '%';
+            heroFill.style.background = heroHpPct > 0.5 ? '#3a9a3a' : heroHpPct > 0.25 ? '#aaaa22' : '#aa2222';
+          }
+          if (eneFill) eneFill.style.width = Math.round(eneHpPct * 100) + '%';
+        }
+      } else {
+        arenaSection.style.display = 'none';
+        arenaSection.innerHTML = '';
+      }
+    }
+
     // Re-render personal log only when new entries exist (compare count)
     const logEl = panel.querySelector('.patch-detail-log');
     if (logEl) {
@@ -1173,6 +1278,54 @@
           : `<div style="color:var(--text-lo);font-size:12px;padding:4px 0;">No entries yet.</div>`;
       }
     }
+  }
+
+  // ── Process combat events → fire visual effects on detail panel ──
+  function processCombatEvents() {
+    if (!combatEvents.length) return;
+    const panel = document.getElementById('hero-detail');
+    if (!panel) { combatEvents = []; return; }
+
+    // Only fire effects if the selected hero's panel is showing
+    const events = combatEvents.splice(0, combatEvents.length);
+    if (!selectedHeroName) return;
+
+    const heroImg  = panel.querySelector('.arena-hero-img');
+    const enemyImg = panel.querySelector('.arena-enemy-img');
+    const heroFighter  = panel.querySelector('.arena-hero-fighter');
+    const enemyFighter = panel.querySelector('.arena-enemy-fighter');
+    if (!heroImg || !enemyImg) return;
+
+    for (const ev of events) {
+      if (ev.heroName !== selectedHeroName) continue;
+
+      if (ev.type === 'hero-hit') {
+        // Hero takes damage: red/purple flash + shake left
+        triggerFlash(heroImg, 'hit-hero');
+        triggerShake(heroFighter, 'shake-hero');
+      } else if (ev.type === 'enemy-hit') {
+        // Enemy takes damage: yellow flash + shake right
+        triggerFlash(enemyImg, 'hit-enemy');
+        triggerShake(enemyFighter, 'shake-enemy');
+      }
+    }
+  }
+
+  function triggerFlash(el, cls) {
+    if (!el) return;
+    el.classList.remove(cls);
+    // force reflow so re-adding the class restarts the animation
+    void el.offsetWidth;
+    el.classList.add(cls);
+    el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
+  }
+
+  function triggerShake(el, cls) {
+    if (!el) return;
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+    el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
   }
 
   function renderThreats() {
