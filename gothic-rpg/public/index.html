@@ -242,13 +242,17 @@
     /* View hero button */
     .btn-view-hero {
       display: block; width: 100%; margin-top: 10px;
-      background: #0e0018; border: 1px solid var(--border2);
-      color: var(--text-lo); font-family: 'Courier New', monospace;
-      font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
-      padding: 5px 0; text-align: center; cursor: pointer; text-decoration: none;
-      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      background: #130020; border: 1px solid var(--purple-dim);
+      color: var(--purple); font-family: 'Courier New', monospace;
+      font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+      padding: 7px 0; text-align: center; cursor: pointer; text-decoration: none;
+      transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+      box-shadow: 0 0 8px #7a4a9a22;
     }
-    .btn-view-hero:hover { background: #180828; color: var(--purple); border-color: var(--purple-dim); }
+    .btn-view-hero:hover {
+      background: #1e0838; color: #c080f0; border-color: #b070e0;
+      box-shadow: 0 0 14px #9a60c844;
+    }
     .tag {
       font-size: 9px;
       letter-spacing: 1px;
@@ -852,6 +856,9 @@
   // ── Selected hero ──────────────────────────────────────────
   let selectedHeroName = null;
 
+  // Slug helpers — "Iron Wolf" → "iron-wolf"
+  function slugify(name) { return name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''); }
+
   function renderAll() {
     processCombatEvents();
     renderHeroes();
@@ -895,7 +902,7 @@
       const rank       = getRank(h.level);
       const isSelected = h.name === selectedHeroName;
       const viewers    = h.heroViewers || 0;
-      const heroUrl    = `/hero?name=${encodeURIComponent(h.name)}`;
+      const heroUrl    = `/hero?name=${slugify(h.name)}`;
       return `<div class="hero-card ${cardClass}${isSelected ? ' selected' : ''}" data-name="${h.name}">
         <div class="hero-card-img-wrap" onclick="selectHero('${h.name.replace(/'/g,"\\'")}')">
           ${h.image ? `<img src="${h.image}" alt="${h.name}">` : ''}
@@ -1517,8 +1524,11 @@
       const heroLabels = heroes.map((h, i) => {
         const stateColor = h.state === 'hunt' ? '#e05555' : h.state === 'wounded' ? '#cc8822' : h.state === 'flee' ? '#55aaee' : '#66bb77';
         const icon = h.state === 'hunt' ? '⚔' : h.state === 'wounded' ? '✞' : h.state === 'flee' ? '↪' : '◈';
-        return `<text x="${px}" y="${py + 20 + i * 13}" text-anchor="middle"
-          font-size="8.5" fill="${stateColor}" font-family="Courier New">${icon} ${h.name.split(' ')[0]}</text>`;
+        const slug = slugify(h.name);
+        return `<text x="${px}" y="${py + 20 + i * 14}" text-anchor="middle"
+          font-size="9" fill="${stateColor}" font-family="Courier New"
+          style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;"
+          onclick="window.open('/hero?name=${slug}','_blank')">${icon} ${h.name}</text>`;
       }).join('');
       return `
         <circle cx="${px}" cy="${py}" r="${dotR}" fill="${dotColor}" opacity="0.9"/>
@@ -1536,23 +1546,45 @@
         <text x="${CR.x}" y="${CR.y-17}" text-anchor="middle" font-size="8" fill="#6a4888" font-family="Courier New">N</text>
       </g>`;
 
+    // Zoom hint
+    const zoomHint = `<text x="10" y="16" font-size="8" fill="#3a1a50" font-family="Courier New" letter-spacing="1">scroll to zoom · drag to pan</text>`;
+
     wrap.innerHTML = `
-      <svg viewBox="0 0 ${W_SVG} ${H_SVG}" xmlns="http://www.w3.org/2000/svg"
-           style="width:100%;height:auto;display:block;background:#06000a;border:1px solid #2a1040;">
+      <svg id="map-svg" viewBox="0 0 ${W_SVG} ${H_SVG}" xmlns="http://www.w3.org/2000/svg"
+           style="width:100%;height:auto;display:block;background:#06000a;border:1px solid #2a1040;cursor:grab;">
         <defs>
           <filter id="map-glow">
             <feGaussianBlur stdDeviation="2" result="blur"/>
             <feComposite in="SourceGraphic" in2="blur" operator="over"/>
           </filter>
         </defs>
-        ${gridLines.join('')}
-        ${landPath}
-        ${riverPaths}
-        ${mountainSvg}
-        ${cityDots}
+        <g id="map-zoom-layer">
+          ${gridLines.join('')}
+          ${landPath}
+          ${riverPaths}
+          ${mountainSvg}
+          ${cityDots}
+        </g>
         ${compassRose}
+        ${zoomHint}
         <text x="10" y="${H_SVG - 10}" font-size="9" fill="#3a1a50" font-family="Courier New" letter-spacing="2">GOTHIC RPG — WORLD MAP</text>
       </svg>`;
+
+    // ── D3 zoom behaviour ───────────────────────────────────
+    const svgEl = document.getElementById('map-svg');
+    const zoomLayer = document.getElementById('map-zoom-layer');
+    const zoom = d3.zoom()
+      .scaleExtent([0.5, 12])
+      .on('zoom', (event) => {
+        const { x, y, k } = event.transform;
+        zoomLayer.setAttribute('transform', `translate(${x},${y}) scale(${k})`);
+        svgEl.style.cursor = event.sourceEvent?.buttons ? 'grabbing' : 'grab';
+      });
+    d3.select(svgEl).call(zoom);
+    // Double-click resets zoom
+    svgEl.addEventListener('dblclick', () => {
+      d3.select(svgEl).transition().duration(400).call(zoom.transform, d3.zoomIdentity);
+    });
   }
 
   // ─────────────────────────────────────────────────────────

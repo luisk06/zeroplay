@@ -385,8 +385,11 @@ app.get('/api/stream', (req, res) => {
 
 // Hero-specific SSE stream — used by the hero detail page
 app.get('/api/stream/hero', (req, res) => {
-  const heroName = decodeURIComponent(req.query.name || '');
-  if (!heroName) return res.status(400).end();
+  const rawParam = req.query.name || '';
+  const hero = findHeroBySlugOrName(rawParam);
+  // Use the canonical hero name as the map key (always exact)
+  const heroName = hero ? hero.name : decodeURIComponent(rawParam);
+  if (!rawParam) return res.status(400).end();
 
   res.setHeader('Content-Type',  'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -398,7 +401,6 @@ app.get('/api/stream/hero', (req, res) => {
   heroClients.get(heroName).add(res);
 
   // Send current state immediately
-  const hero = W.heroes.find(h => h.name === heroName);
   res.write(`data: ${JSON.stringify({ type:'hero', hero: hero ? liveHero(hero) : null, viewers: heroViewerCount(heroName), world: { year:W.year, era:era() } })}\n\n`);
 
   // Broadcast updated viewer count to all hero-page viewers
@@ -495,6 +497,19 @@ app.get('/admin', requireAdmin, (req, res) => {
 app.get('/hero', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'hero.html'));
 });
+
+// Slug helpers — convert "Iron Wolf" ↔ "iron-wolf"
+function slugify(name) { return name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''); }
+function findHeroBySlugOrName(nameParam) {
+  if (!nameParam) return null;
+  const decoded = decodeURIComponent(nameParam);
+  // Exact match first
+  let h = W.heroes.find(h => h.name === decoded);
+  if (h) return h;
+  // Slug match fallback
+  const slug = decoded.toLowerCase().replace(/\s+/g,'-');
+  return W.heroes.find(h => slugify(h.name) === slug) || null;
+}
 
 // Get full hero list for admin
 app.get('/api/admin/heroes', requireAdmin, (req, res) => {

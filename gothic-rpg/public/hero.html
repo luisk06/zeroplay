@@ -121,15 +121,24 @@
     #not-found h2 { font-size:16px; color:var(--red); letter-spacing:3px; margin-bottom:12px; font-weight:normal; }
     #not-found p  { font-size:12px; color:var(--text-lo); }
 
-    /* Share button */
-    #share-btn {
-      display:inline-block; margin-top:12px;
-      background:#0e0018; border:1px solid var(--border2); color:var(--text-lo);
-      font-family:'Courier New',monospace; font-size:10px; letter-spacing:2px;
-      text-transform:uppercase; padding:6px 16px; cursor:pointer;
-      transition:background 0.15s, color 0.15s;
+    /* Share section */
+    #share-section { margin-top:28px; padding-top:16px; border-top:1px solid var(--border2); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    #share-url {
+      flex:1; min-width:200px;
+      background:#080010; border:1px solid var(--border2); color:var(--text-lo);
+      font-family:'Courier New',monospace; font-size:11px; padding:7px 10px;
+      outline:none; cursor:text; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
-    #share-btn:hover { background:#180828; color:var(--purple); border-color:var(--purple-dim); }
+    #share-btn {
+      background:#130020; border:1px solid var(--purple-dim); color:var(--purple);
+      font-family:'Courier New',monospace; font-size:10px; letter-spacing:2px;
+      text-transform:uppercase; padding:7px 18px; cursor:pointer;
+      transition:background 0.15s, color 0.15s, box-shadow 0.15s;
+      box-shadow:0 0 8px #7a4a9a22; white-space:nowrap;
+    }
+    #share-btn:hover { background:#1e0838; color:#c080f0; border-color:#b070e0; box-shadow:0 0 14px #9a60c844; }
+    #share-copied { font-size:10px; color:var(--green); letter-spacing:1px; opacity:0; transition:opacity 0.3s; }
+    #share-copied.show { opacity:1; }
   </style>
 </head>
 <body>
@@ -192,7 +201,11 @@
     </div>
 
     <!-- Share -->
-    <button id="share-btn" onclick="copyLink()">⧉ Copy Hero Link</button>
+    <div id="share-section">
+      <input id="share-url" type="text" readonly onclick="this.select()">
+      <button id="share-btn" onclick="copyLink()">⧉ Copy Link</button>
+      <span id="share-copied">✓ Copied!</span>
+    </div>
 
   </div>
 </div>
@@ -216,8 +229,27 @@
   ];
   function getRank(level) { let r=RANKS[0]; for(const x of RANKS){if(level>=x.minLevel)r=x;else break;} return r; }
 
-  const heroName = new URLSearchParams(location.search).get('name') || '';
-  document.title = heroName ? `${heroName} — Gothic RPG` : 'Hero — Gothic RPG';
+  // Slug helpers
+  function slugify(name) { return name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''); }
+  function deslugify(slug) { return slug.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
+
+  const rawParam = new URLSearchParams(location.search).get('name') || '';
+  // heroName is what we pass to the SSE — server resolves slug → canonical name
+  const heroName = rawParam;
+  const displayName = deslugify(rawParam);
+  document.title = rawParam ? `${displayName} — Gothic RPG` : 'Hero — Gothic RPG';
+
+  // Set share URL to clean slug form
+  function setShareUrl(canonicalName) {
+    const slug = slugify(canonicalName || rawParam);
+    const url = `${location.origin}/hero?name=${slug}`;
+    const el = document.getElementById('share-url');
+    if (el) el.value = url;
+    // Canonicalize the browser URL without reload if slug differs
+    if (rawParam !== slug) {
+      history.replaceState(null, '', `/hero?name=${slug}`);
+    }
+  }
 
   // ── Render ──────────────────────────────────────────────────
   let currentHero = null;
@@ -232,6 +264,9 @@
     document.getElementById('hero-content').style.display = '';
 
     currentHero = hero;
+
+    // Update share URL with canonical name on first load
+    setShareUrl(hero.name);
 
     // Splash
     if (hero.image) document.getElementById('splash-img').src = hero.image;
@@ -363,8 +398,8 @@
 
   // ── SSE ──────────────────────────────────────────────────
   function connect() {
-    if (!heroName) { document.getElementById('not-found').style.display=''; return; }
-    const url = `/api/stream/hero?name=${encodeURIComponent(heroName)}`;
+    if (!rawParam) { document.getElementById('not-found').style.display=''; return; }
+    const url = `/api/stream/hero?name=${encodeURIComponent(rawParam)}`;
     const es = new EventSource(url);
     es.onmessage = (e) => {
       const msg = JSON.parse(e.data);
@@ -385,14 +420,20 @@
   }
 
   function copyLink() {
-    navigator.clipboard.writeText(location.href).then(() => {
-      const btn = document.getElementById('share-btn');
-      const orig = btn.textContent;
-      btn.textContent = '✓ Copied!';
-      setTimeout(() => { btn.textContent = orig; }, 2000);
+    const urlEl = document.getElementById('share-url');
+    const url = urlEl ? urlEl.value : location.href;
+    navigator.clipboard.writeText(url).then(() => {
+      const copied = document.getElementById('share-copied');
+      if (copied) { copied.classList.add('show'); setTimeout(() => copied.classList.remove('show'), 2200); }
+    }).catch(() => {
+      // Fallback: select the input so user can copy manually
+      if (urlEl) urlEl.select();
     });
   }
   window.copyLink = copyLink;
+
+  // Also init share URL to current location slug right away (before SSE arrives)
+  setShareUrl(rawParam);
 
   connect();
 })();
