@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hero — Gothic RPG</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:#060008; --bg-panel:#0c000f; --bg-card:#110015; --bg-card2:#0e0012;
+      --border:#2a1040; --border2:#1a0830;
+      --purple:#9a60c8; --purple-dim:#7a4a9a;
+      --gold:#e8b830; --red:#cc4444; --green:#44aa55; --blue:#4488cc;
+      --text-hi:#e8d8f8; --text-mid:#c0a0e0; --text-lo:#9070a8; --text-dim:#6a4888;
+    }
+    body { background:var(--bg); font-family:'Courier New',monospace; color:var(--text-mid); min-height:100vh; }
+
+    /* ── Hero splash ── */
+    #hero-splash {
+      position: relative; width:100%; height:340px; overflow:hidden;
+    }
+    #hero-splash img {
+      width:100%; height:100%; object-fit:cover; object-position:top center;
+      filter:brightness(0.6) saturate(0.8);
+    }
+    #splash-overlay {
+      position:absolute; inset:0;
+      background:linear-gradient(to bottom, transparent 30%, var(--bg) 100%);
+      display:flex; flex-direction:column; justify-content:flex-end;
+      padding:28px 32px;
+    }
+    #hero-title {
+      font-size:28px; color:var(--text-hi); letter-spacing:2px; margin-bottom:6px;
+    }
+    #hero-subtitle { font-size:13px; color:var(--text-mid); letter-spacing:2px; }
+    #hero-state-badge {
+      display:inline-block; font-size:10px; letter-spacing:2px; padding:3px 10px;
+      border:1px solid; text-transform:uppercase; margin-top:8px; width:fit-content;
+    }
+    #viewers-badge {
+      position:absolute; top:16px; right:16px;
+      background:rgba(0,0,0,0.7); border:1px solid #2a3060;
+      color:#88ccff; font-size:11px; letter-spacing:1px; padding:5px 12px;
+    }
+    #back-link {
+      position:absolute; top:16px; left:16px;
+      background:rgba(0,0,0,0.7); border:1px solid var(--border);
+      color:var(--text-lo); font-size:10px; letter-spacing:1px;
+      padding:5px 12px; text-decoration:none; transition:color 0.15s;
+    }
+    #back-link:hover { color:var(--text-mid); }
+
+    /* ── Body ── */
+    #hero-body {
+      max-width:860px; margin:0 auto; padding:0 24px 60px;
+    }
+
+    /* Combat arena */
+    #arena-wrap { margin:24px 0 28px; }
+    .combat-arena {
+      display:flex; align-items:stretch; gap:0;
+      background:#080010; border:1px solid #2a0a40; overflow:hidden; min-height:200px;
+    }
+    .arena-fighter { flex:1; display:flex; flex-direction:column; align-items:center; position:relative; overflow:hidden; }
+    .arena-fighter img { width:100%; height:200px; object-fit:cover; object-position:top center; display:block; filter:brightness(0.8) saturate(0.85); transition:filter 0.1s; }
+    .arena-fighter-label { position:absolute; bottom:0; left:0; right:0; padding:4px 8px; background:linear-gradient(transparent,rgba(0,0,0,0.85)); font-size:10px; color:var(--text-mid); letter-spacing:1px; text-align:center; }
+    .arena-vs { display:flex; align-items:center; justify-content:center; width:36px; flex-shrink:0; background:#0e0018; border-left:1px solid #2a0a40; border-right:1px solid #2a0a40; }
+    .arena-vs span { font-size:11px; color:var(--purple-dim); letter-spacing:2px; writing-mode:vertical-rl; text-transform:uppercase; }
+    .arena-hp-bar { position:absolute; bottom:22px; left:6px; right:6px; height:4px; background:rgba(0,0,0,0.5); border-radius:2px; }
+    .arena-hp-fill { height:100%; border-radius:2px; transition:width 0.3s; }
+    @keyframes hero-flash-hit { 0%{filter:brightness(0.8) saturate(0.85);} 15%{filter:brightness(2.2) saturate(0.2) sepia(1) hue-rotate(300deg);} 100%{filter:brightness(0.8) saturate(0.85);} }
+    @keyframes enemy-flash-hit { 0%{filter:brightness(0.8) saturate(0.85);} 15%{filter:brightness(2.5) saturate(0.1) sepia(1) hue-rotate(60deg);} 100%{filter:brightness(0.8) saturate(0.85);} }
+    @keyframes shake-hero  { 0%{transform:translateX(0);} 20%{transform:translateX(-8px);} 40%{transform:translateX(6px);} 60%{transform:translateX(-4px);} 80%{transform:translateX(3px);} 100%{transform:translateX(0);} }
+    @keyframes shake-enemy { 0%{transform:translateX(0);} 20%{transform:translateX(8px);}  40%{transform:translateX(-6px);} 60%{transform:translateX(4px);}  80%{transform:translateX(-3px);} 100%{transform:translateX(0);} }
+    .hit-hero  { animation:hero-flash-hit  0.35s ease-out forwards; }
+    .hit-enemy { animation:enemy-flash-hit 0.35s ease-out forwards; }
+    .shake-hero  { animation:shake-hero  0.32s ease-out; }
+    .shake-enemy { animation:shake-enemy 0.32s ease-out; }
+
+    /* Stats grid */
+    .stat-section-label { font-size:9px; letter-spacing:3px; color:var(--purple-dim); text-transform:uppercase; margin-bottom:10px; border-bottom:1px solid var(--border2); padding-bottom:4px; }
+    .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:24px; }
+    .stat-box { background:var(--bg-card2); border:1px solid var(--border2); padding:10px 6px; text-align:center; }
+    .stat-box .sv { display:block; font-size:22px; color:var(--text-hi); line-height:1.2; }
+    .stat-box .sl { display:block; font-size:9px; color:var(--text-lo); letter-spacing:1px; text-transform:uppercase; margin-top:2px; }
+
+    /* HP / XP bars */
+    .bar-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+    .bar-label { font-size:10px; color:var(--text-lo); width:22px; letter-spacing:1px; }
+    .bar-track { flex:1; height:8px; background:#1a0a28; border-radius:1px; overflow:hidden; }
+    .bar-fill   { height:100%; border-radius:1px; transition:width 0.4s; }
+    .bar-val    { font-size:11px; color:var(--text-mid); width:80px; text-align:right; }
+
+    /* Rank strip */
+    .rank-strip { display:flex; flex-direction:column; gap:3px; margin-bottom:24px; }
+    .rank-pip { display:flex; align-items:center; gap:8px; padding:5px 8px; border:1px solid var(--border2); background:var(--bg-card2); opacity:0.4; }
+    .rank-pip.done { opacity:0.7; } .rank-pip.current { opacity:1; background:#150020; }
+    .rank-pip-badge { font-size:13px; width:18px; text-align:center; flex-shrink:0; }
+    .rank-pip-name  { font-size:11px; color:var(--text-mid); flex:1; }
+    .rank-pip-lvl   { font-size:9px; color:var(--text-dim); letter-spacing:1px; }
+    .rank-pip.current .rank-pip-name { color:var(--text-hi); }
+
+    /* Log */
+    .log-entry { display:flex; align-items:baseline; gap:10px; padding:5px 0; border-bottom:1px solid #0d000f; font-size:12px; line-height:1.5; }
+    .log-entry:last-child { border-bottom:none; }
+    .log-yr { font-size:10px; color:var(--text-lo); letter-spacing:1px; flex-shrink:0; min-width:32px; }
+    .log-icon { font-size:12px; flex-shrink:0; }
+    .log-msg  { color:var(--text-mid); flex:1; }
+    .log-entry.combat .log-msg { color:#e05555; }
+    .log-entry.loot   .log-msg { color:#d4aa44; }
+    .log-entry.level  .log-msg { color:#5599dd; }
+    .log-entry.death  .log-msg { color:#aa3344; }
+    .log-entry.explore .log-msg { color:#55aa66; }
+
+    /* Two-col layout */
+    .two-col { display:grid; grid-template-columns:1fr 1fr; gap:28px; margin-bottom:24px; }
+    @media(max-width:600px) { .two-col { grid-template-columns:1fr; } .stat-grid { grid-template-columns:repeat(2,1fr); } }
+
+    /* Not found */
+    #not-found { text-align:center; padding:80px 24px; }
+    #not-found h2 { font-size:16px; color:var(--red); letter-spacing:3px; margin-bottom:12px; font-weight:normal; }
+    #not-found p  { font-size:12px; color:var(--text-lo); }
+
+    /* Share button */
+    #share-btn {
+      display:inline-block; margin-top:12px;
+      background:#0e0018; border:1px solid var(--border2); color:var(--text-lo);
+      font-family:'Courier New',monospace; font-size:10px; letter-spacing:2px;
+      text-transform:uppercase; padding:6px 16px; cursor:pointer;
+      transition:background 0.15s, color 0.15s;
+    }
+    #share-btn:hover { background:#180828; color:var(--purple); border-color:var(--purple-dim); }
+  </style>
+</head>
+<body>
+
+<div id="hero-splash">
+  <img id="splash-img" src="" alt="">
+  <a id="back-link" href="/">← World</a>
+  <div id="viewers-badge">● <span id="viewer-num">0</span> watching</div>
+  <div id="splash-overlay">
+    <div id="hero-title">—</div>
+    <div id="hero-subtitle">—</div>
+    <div id="hero-state-badge">—</div>
+  </div>
+</div>
+
+<div id="hero-body">
+  <div id="not-found" style="display:none;">
+    <h2>HERO NOT FOUND</h2>
+    <p>This hero may have left the world, or the name in the URL is incorrect.</p>
+  </div>
+
+  <div id="hero-content" style="display:none;">
+
+    <!-- Arena (only when hunting) -->
+    <div id="arena-wrap" style="display:none;"></div>
+
+    <!-- Bars -->
+    <div style="margin-bottom:20px;" id="bars-wrap">
+      <div class="bar-row">
+        <span class="bar-label">HP</span>
+        <div class="bar-track"><div class="bar-fill" id="bar-hp" style="background:#3a9a3a;"></div></div>
+        <span class="bar-val" id="bar-hp-val">—</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">XP</span>
+        <div class="bar-track"><div class="bar-fill" id="bar-xp" style="background:#3366bb;"></div></div>
+        <span class="bar-val" id="bar-xp-val">—</span>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stat-section-label">Combat Stats</div>
+    <div class="stat-grid">
+      <div class="stat-box"><span class="sv" id="s-atk">—</span><span class="sl">Attack</span></div>
+      <div class="stat-box"><span class="sv" id="s-kills">—</span><span class="sl">Kills</span></div>
+      <div class="stat-box"><span class="sv" id="s-loot">—</span><span class="sl">Relics</span></div>
+      <div class="stat-box"><span class="sv" id="s-falls" style="">—</span><span class="sl">Falls</span></div>
+    </div>
+
+    <!-- Two columns: ranks + log -->
+    <div class="two-col">
+      <div>
+        <div class="stat-section-label">Rank Progression</div>
+        <div class="rank-strip" id="rank-strip"></div>
+      </div>
+      <div>
+        <div class="stat-section-label">Personal Chronicle</div>
+        <div id="hero-log"></div>
+      </div>
+    </div>
+
+    <!-- Share -->
+    <button id="share-btn" onclick="copyLink()">⧉ Copy Hero Link</button>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  const ENEMY_IMAGES = {
+    Skeleton:'skeleton.jpg', Ghoul:'ghoul.jpg', Spider:'spider.jpg',
+    Shade:'shade.jpg', Golem:'golem.jpg', Spectre:'spectre.jpg', Troll:'troll.jpg'
+  };
+  const LOG_ICONS = { combat:'⚔', loot:'✦', level:'★', death:'†', explore:'◈' };
+  const RANKS = [
+    { minLevel:1,  name:'Initiate',  badge:'◌', color:'#7060a0' },
+    { minLevel:3,  name:'Wanderer',  badge:'◈', color:'#6080b0' },
+    { minLevel:5,  name:'Veteran',   badge:'✦', color:'#50a070' },
+    { minLevel:8,  name:'Champion',  badge:'❖', color:'#b8901a' },
+    { minLevel:12, name:'Warlord',   badge:'⚔', color:'#c04020' },
+    { minLevel:17, name:'Deathlord', badge:'☠', color:'#902090' },
+    { minLevel:23, name:'Archon',    badge:'✸', color:'#cc2244' },
+    { minLevel:30, name:'Undying',   badge:'★', color:'#e8b830' },
+  ];
+  function getRank(level) { let r=RANKS[0]; for(const x of RANKS){if(level>=x.minLevel)r=x;else break;} return r; }
+
+  const heroName = new URLSearchParams(location.search).get('name') || '';
+  document.title = heroName ? `${heroName} — Gothic RPG` : 'Hero — Gothic RPG';
+
+  // ── Render ──────────────────────────────────────────────────
+  let currentHero = null;
+
+  function render(hero, viewers, world) {
+    if (!hero) {
+      document.getElementById('not-found').style.display = '';
+      document.getElementById('hero-content').style.display = 'none';
+      return;
+    }
+    document.getElementById('not-found').style.display = 'none';
+    document.getElementById('hero-content').style.display = '';
+
+    currentHero = hero;
+
+    // Splash
+    if (hero.image) document.getElementById('splash-img').src = hero.image;
+    document.getElementById('hero-title').textContent = hero.name + (hero.isBlonde ? ' ★' : '');
+    const rank = getRank(hero.level);
+    document.getElementById('hero-subtitle').textContent = `${rank.badge} ${rank.name}  ·  Level ${hero.level}  ·  Year ${world?.year || '—'}`;
+    document.getElementById('hero-title').style.color = hero.isBlonde ? '#e8b830' : '#e8d8f8';
+
+    const stateLabel = hero.state === 'hunt' ? '⚔ Hunting' : hero.state === 'flee' ? '↪ Fleeing' : hero.state === 'wounded' ? '✞ Wounded' : '◈ Exploring';
+    const stateColors = { hunt:'#e05555', flee:'#55aaee', wounded:'#cc8822', explore:'#66bb77' };
+    const badge = document.getElementById('hero-state-badge');
+    badge.textContent = stateLabel;
+    badge.style.color = stateColors[hero.state] || '#66bb77';
+    badge.style.borderColor = stateColors[hero.state] || '#66bb77';
+
+    document.getElementById('viewer-num').textContent = viewers || 0;
+
+    // Bars
+    const hpPct = Math.max(0, hero.hp / hero.maxhp);
+    const hpColor = hpPct > 0.6 ? '#3a9a3a' : hpPct > 0.3 ? '#aaaa22' : '#aa2222';
+    document.getElementById('bar-hp').style.width = Math.round(hpPct*100) + '%';
+    document.getElementById('bar-hp').style.background = hpColor;
+    document.getElementById('bar-hp-val').textContent = `${hero.hp} / ${hero.maxhp}`;
+    const xpPct = Math.min(1, hero.xp / (hero.level * 15));
+    document.getElementById('bar-xp').style.width = Math.round(xpPct*100) + '%';
+    document.getElementById('bar-xp-val').textContent = `${hero.xp} / ${hero.level*15}`;
+
+    // Stats
+    document.getElementById('s-atk').textContent   = hero.atk;
+    document.getElementById('s-kills').textContent = hero.kills;
+    document.getElementById('s-loot').textContent  = hero.loot;
+    const fallsEl = document.getElementById('s-falls');
+    fallsEl.textContent = hero.falls || 0;
+    fallsEl.style.color = (hero.falls||0) > 0 ? '#cc8822' : '';
+
+    // Rank strip
+    const rankStrip = document.getElementById('rank-strip');
+    rankStrip.innerHTML = RANKS.map(r => {
+      const done = hero.level >= r.minLevel;
+      const cur  = rank.name === r.name;
+      return `<div class="rank-pip ${done?'done':''} ${cur?'current':''}" style="${cur?`border-color:${rank.color};`:''}" >
+        <span class="rank-pip-badge">${r.badge}</span>
+        <span class="rank-pip-name">${r.name}</span>
+        <span class="rank-pip-lvl">Lv${r.minLevel}</span>
+      </div>`;
+    }).join('');
+
+    // Log
+    const logEl = document.getElementById('hero-log');
+    const log = hero.log || [];
+    logEl.innerHTML = log.length
+      ? log.map(l => `<div class="log-entry ${l.type}">
+          <span class="log-yr">Yr${l.t}</span>
+          <span class="log-icon">${LOG_ICONS[l.type]||'◈'}</span>
+          <span class="log-msg">${l.msg}</span>
+        </div>`).join('')
+      : `<div style="color:var(--text-lo);font-size:12px;padding:4px 0;">No entries yet.</div>`;
+
+    // Arena
+    renderArena(hero);
+  }
+
+  function renderArena(hero) {
+    const wrap = document.getElementById('arena-wrap');
+    if (hero.state === 'hunt' && hero.target) {
+      wrap.style.display = '';
+      const hpPct = Math.max(0, hero.hp / hero.maxhp);
+      const ePct  = Math.max(0, hero.target.hp / hero.target.maxhp);
+      const hpColor = hpPct > 0.5 ? '#3a9a3a' : hpPct > 0.25 ? '#aaaa22' : '#aa2222';
+      wrap.innerHTML = `
+        <div class="stat-section-label" style="color:var(--red);border-color:#3a0a18;">⚔ In Combat</div>
+        <div class="combat-arena">
+          <div class="arena-fighter arena-hero-fighter">
+            <img class="arena-hero-img" src="${hero.image||''}" alt="${hero.name}">
+            <div class="arena-hp-bar"><div class="arena-hp-fill" id="arena-hero-hp" style="width:${Math.round(hpPct*100)}%;background:${hpColor};"></div></div>
+            <div class="arena-fighter-label">${hero.name}</div>
+          </div>
+          <div class="arena-vs"><span>VS</span></div>
+          <div class="arena-fighter arena-enemy-fighter">
+            <img class="arena-enemy-img" src="${ENEMY_IMAGES[hero.target.name]||''}" alt="${hero.target.name}">
+            <div class="arena-hp-bar"><div class="arena-hp-fill" id="arena-enemy-hp" style="width:${Math.round(ePct*100)}%;background:#882233;"></div></div>
+            <div class="arena-fighter-label">${hero.target.name}</div>
+          </div>
+        </div>`;
+    } else {
+      wrap.style.display = 'none';
+      wrap.innerHTML = '';
+    }
+  }
+
+  function patchArena(hero) {
+    const wrap = document.getElementById('arena-wrap');
+    if (!wrap) return;
+    if (hero.state === 'hunt' && hero.target) {
+      if (!wrap.querySelector('.combat-arena')) { renderArena(hero); return; }
+      const hpPct   = Math.max(0, hero.hp / hero.maxhp);
+      const ePct    = Math.max(0, hero.target.hp / hero.target.maxhp);
+      const hpColor = hpPct > 0.5 ? '#3a9a3a' : hpPct > 0.25 ? '#aaaa22' : '#aa2222';
+      const hFill = document.getElementById('arena-hero-hp');
+      const eFill = document.getElementById('arena-enemy-hp');
+      if (hFill) { hFill.style.width = Math.round(hpPct*100)+'%'; hFill.style.background = hpColor; }
+      if (eFill) eFill.style.width = Math.round(ePct*100)+'%';
+    } else {
+      wrap.style.display = 'none'; wrap.innerHTML = '';
+    }
+  }
+
+  // Hit effects
+  function triggerFlash(el, cls) {
+    if (!el) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+    el.addEventListener('animationend', ()=>el.classList.remove(cls), {once:true});
+  }
+  function triggerShake(el, cls) {
+    if (!el) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+    el.addEventListener('animationend', ()=>el.classList.remove(cls), {once:true});
+  }
+  function processCombatEvents(events) {
+    if (!events || !events.length) return;
+    for (const ev of events) {
+      if (ev.type === 'hero-hit') {
+        triggerFlash(document.querySelector('.arena-hero-img'), 'hit-hero');
+        triggerShake(document.querySelector('.arena-hero-fighter'), 'shake-hero');
+      } else if (ev.type === 'enemy-hit') {
+        triggerFlash(document.querySelector('.arena-enemy-img'), 'hit-enemy');
+        triggerShake(document.querySelector('.arena-enemy-fighter'), 'shake-enemy');
+      }
+    }
+  }
+
+  // ── SSE ──────────────────────────────────────────────────
+  function connect() {
+    if (!heroName) { document.getElementById('not-found').style.display=''; return; }
+    const url = `/api/stream/hero?name=${encodeURIComponent(heroName)}`;
+    const es = new EventSource(url);
+    es.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'hero') {
+        if (currentHero && msg.hero) {
+          patchArena(msg.hero);
+          processCombatEvents(msg.combatEvents);
+          // Update non-arena parts
+          render(msg.hero, msg.viewers, msg.world);
+        } else {
+          render(msg.hero, msg.viewers, msg.world);
+        }
+      } else if (msg.type === 'viewers') {
+        document.getElementById('viewer-num').textContent = msg.viewers || 0;
+      }
+    };
+    es.onerror = () => setTimeout(connect, 3000);
+  }
+
+  function copyLink() {
+    navigator.clipboard.writeText(location.href).then(() => {
+      const btn = document.getElementById('share-btn');
+      const orig = btn.textContent;
+      btn.textContent = '✓ Copied!';
+      setTimeout(() => { btn.textContent = orig; }, 2000);
+    });
+  }
+  window.copyLink = copyLink;
+
+  connect();
+})();
+</script>
+</body>
+</html>

@@ -84,7 +84,7 @@ const WOUNDED_RECOVERY_TICKS  = 300;
 //  World state
 // ─────────────────────────────────────────────────────────────────────────────
 let W = { tick:0, year:1, totalKills:0, totalDeaths:0, totalLoot:0, totalBattles:0, heroes:[], enemies:[], log:[] };
-let simSpeed  = 2;
+let simSpeed  = 1;
 let simPaused = false;
 let pendingCombatEvents = [];
 
@@ -117,6 +117,18 @@ function serializeWorld(w) {
     })),
     log: w.log.slice(0, 40),
     savedAt: new Date().toISOString()
+  };
+}
+
+// Single-hero live data for the hero page
+function liveHero(h) {
+  return {
+    name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk, baseAtk:h.baseAtk,
+    xp:h.xp, level:h.level, loot:h.loot, kills:h.kills,
+    color:h.color, state:h.state, isBlonde:h.isBlonde,
+    fleeCount:h.fleeCount, falls:h.falls||0, image:h.image,
+    target: h.target ? { name:h.target.name, hp:h.target.hp, maxhp:h.target.maxhp } : null,
+    log: W.log.filter(l => l.msg.startsWith(h.name.split(' ')[0])).slice(0, 12)
   };
 }
 
@@ -306,20 +318,53 @@ function tick() {
   }
   if (W.tick % SAVE_INTERVAL_TICKS === 0) saveState(W).catch(() => {});
   if (W.tick % BROADCAST_INTERVAL_TICKS === 0) {
-    broadcast({ type:'state', world: liveSnapshot(), combatEvents: pendingCombatEvents.splice(0) });
+    const events = pendingCombatEvents.splice(0);
+    broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents: events });
+    // Push updates to each hero's dedicated viewers
+    for (const [heroName, set] of heroClients) {
+      if (!set.size) continue;
+      const hero = W.heroes.find(h => h.name === heroName);
+      const heroEvents = events.filter(e => e.heroName === heroName);
+      broadcastHero(heroName, { type:'hero', hero: hero ? liveHero(hero) : null, viewers: set.size, world:{ year:W.year, era:era() }, combatEvents: heroEvents });
+    }
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SSE — viewer count included in every broadcast
+//  SSE — viewer count + per-hero viewer tracking
 // ─────────────────────────────────────────────────────────────────────────────
 const clients = new Set();
+// heroClients: Map<heroName, Set<res>>
+const heroClients = new Map();
 
 function broadcast(data) {
   const msg = `data: ${JSON.stringify(data)}\n\n`;
   for (const res of clients) {
     try { res.write(msg); } catch (e) { clients.delete(res); }
   }
+}
+
+function broadcastHero(heroName, data) {
+  const set = heroClients.get(heroName);
+  if (!set) return;
+  const msg = `data: ${JSON.stringify(data)}\n\n`;
+  for (const res of set) {
+    try { res.write(msg); } catch (e) { set.delete(res); }
+  }
+}
+
+function heroViewerCount(heroName) {
+  return (heroClients.get(heroName) || new Set()).size;
+}
+
+// Include per-hero viewer counts in the live snapshot
+function liveSnapshotWithViewers() {
+  const snap = liveSnapshot();
+  snap.heroes = snap.heroes.map(h => ({
+    ...h,
+    heroViewers: heroViewerCount(h.name)
+  }));
+  return snap;
 }
 
 app.get('/api/stream', (req, res) => {
@@ -330,13 +375,39 @@ app.get('/api/stream', (req, res) => {
   res.flushHeaders();
 
   clients.add(res);
-  // Send snapshot immediately — clients.size now includes this client
-  res.write(`data: ${JSON.stringify({ type:'state', world: liveSnapshot(), combatEvents:[] })}\n\n`);
+  res.write(`data: ${JSON.stringify({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] })}\n\n`);
 
   req.on('close', () => {
     clients.delete(res);
-    // Broadcast updated viewer count
     broadcast({ type:'viewers', viewers: clients.size });
+  });
+});
+
+// Hero-specific SSE stream — used by the hero detail page
+app.get('/api/stream/hero', (req, res) => {
+  const heroName = decodeURIComponent(req.query.name || '');
+  if (!heroName) return res.status(400).end();
+
+  res.setHeader('Content-Type',  'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection',    'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.flushHeaders();
+
+  if (!heroClients.has(heroName)) heroClients.set(heroName, new Set());
+  heroClients.get(heroName).add(res);
+
+  // Send current state immediately
+  const hero = W.heroes.find(h => h.name === heroName);
+  res.write(`data: ${JSON.stringify({ type:'hero', hero: hero ? liveHero(hero) : null, viewers: heroViewerCount(heroName), world: { year:W.year, era:era() } })}\n\n`);
+
+  // Broadcast updated viewer count to all hero-page viewers
+  broadcastHero(heroName, { type:'viewers', viewers: heroViewerCount(heroName) });
+
+  req.on('close', () => {
+    const set = heroClients.get(heroName);
+    if (set) { set.delete(res); if (set.size === 0) heroClients.delete(heroName); }
+    broadcastHero(heroName, { type:'viewers', viewers: heroViewerCount(heroName) });
   });
 });
 
@@ -418,6 +489,11 @@ app.post('/api/join', (req, res) => {
 // Serve admin page
 app.get('/admin', requireAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// Serve hero page (public)
+app.get('/hero', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'hero.html'));
 });
 
 // Get full hero list for admin
