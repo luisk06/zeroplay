@@ -368,6 +368,51 @@ app.post('/api/reset', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Join the World — add a new hero (viewer-initiated)
+// ─────────────────────────────────────────────────────────────────────────────
+// Simple rate-limit: max 1 new hero per 30s globally, and cap total heroes at 8
+const JOIN_COOLDOWN_MS = 30000;
+let lastJoinTime = 0;
+
+app.post('/api/join', (req, res) => {
+  const now = Date.now();
+  if (now - lastJoinTime < JOIN_COOLDOWN_MS) {
+    return res.status(429).json({ error: 'A hero just entered. Wait a moment before another joins.' });
+  }
+  if (W.heroes.length >= 8) {
+    return res.status(400).json({ error: 'The world is full. Wait for a hero to fall before joining.' });
+  }
+
+  // Assign a unique name not already in use
+  const usedNames = new Set(W.heroes.map(h => h.name));
+  const availFirstNames = HERO_NAMES.filter(n => !W.heroes.some(h => h.name.startsWith(n)));
+  const firstName = availFirstNames.length ? pick(availFirstNames) : pick(HERO_NAMES);
+  const title     = pick(HERO_TITLES);
+  const heroName  = `${firstName} ${title}`;
+
+  // Assign unique image
+  const usedImages  = new Set(W.heroes.map(h => h.image));
+  const availImages = HERO_IMAGES.filter(i => !usedImages.has(i));
+  const image       = availImages.length ? pick(availImages) : pick(HERO_IMAGES);
+
+  const baseAtk = 3 + rng(4);
+  const newHero = {
+    name: heroName, hp: 20 + rng(10), maxhp: 30,
+    atk: baseAtk, baseAtk,
+    xp:0, level:1, loot:0, kills:0, falls:0,
+    color: HERO_COLORS[rng(HERO_COLORS.length)],
+    state:'explore', target:null, stateTimer: 20,
+    isBlonde:false, fleeCount:0, image
+  };
+
+  W.heroes.push(newHero);
+  lastJoinTime = now;
+  addLog(`${firstName} ${title} has joined the world!`, 'explore');
+  broadcast({ type:'state', world: liveSnapshot(), combatEvents:[] });
+  res.json({ ok:true, heroName });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Admin endpoints (protected)
 // ─────────────────────────────────────────────────────────────────────────────
 // Serve admin page

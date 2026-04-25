@@ -613,14 +613,10 @@
       <span id="era-display">Year 1 — Age of Shadow</span>
     </div>
     <div id="controls">
-      <span class="label">Speed</span>
-      <button id="btn-slow">1×</button>
-      <button id="btn-med" class="active">2×</button>
-      <button id="btn-fast">4×</button>
-      <button id="btn-pause">&#9646;&#9646;</button>
+      <button id="btn-pause" title="Pause your view — world keeps running">&#9646;&#9646; Pause View</button>
+      <button id="btn-join" style="border-color:#3a6a20;color:#66bb77;">⚔ Join the World</button>
       <span id="save-status">loading...</span>
       <span id="viewer-count" style="font-size:10px;color:var(--text-lo);letter-spacing:1px;margin-left:6px;"></span>
-      <button id="btn-reset" class="danger">⟳ Reset</button>
     </div>
   </div>
 
@@ -651,17 +647,30 @@
 
 </div>
 
-<!-- Reset confirmation modal -->
-<div id="reset-modal">
-  <div class="modal-box">
-    <h2>RESET THE WORLD?</h2>
-    <p>All history, heroes, and chronicles will be permanently erased. The world will begin again from Year 1.</p>
+<!-- Join the World modal -->
+<div id="join-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);align-items:center;justify-content:center;z-index:100;">
+  <div class="modal-box" style="border-color:#2a5a18;max-width:360px;">
+    <h2 style="color:#66bb77;letter-spacing:3px;">JOIN THE WORLD</h2>
+    <p style="margin-bottom:18px;">A new soul will enter the realm and take their place among the living heroes.</p>
+    <p style="font-size:12px;color:var(--text-lo);margin-bottom:6px;letter-spacing:1px;">Quick verification — answer to continue:</p>
+    <p id="join-question" style="font-size:16px;color:var(--text-hi);margin-bottom:12px;letter-spacing:1px;"></p>
+    <input id="join-answer" type="number" placeholder="Your answer"
+      style="width:100%;background:#080010;border:1px solid #2a4020;color:var(--text-hi);
+             font-family:'Courier New',monospace;font-size:14px;padding:8px 12px;
+             margin-bottom:16px;outline:none;box-sizing:border-box;">
+    <p id="join-error" style="color:var(--red);font-size:11px;margin-bottom:12px;min-height:16px;letter-spacing:1px;"></p>
     <div class="btn-row">
-      <button id="modal-cancel">Cancel</button>
-      <button id="modal-confirm" class="confirm">Erase Everything</button>
+      <button id="join-cancel" style="border-color:var(--border);color:var(--text-mid);">Cancel</button>
+      <button id="join-confirm" style="border-color:#2a5a18;color:#66bb77;">Enter the World</button>
     </div>
   </div>
 </div>
+
+<!-- Join success toast -->
+<div id="join-toast" style="display:none;position:fixed;bottom:28px;left:50%;transform:translateX(-50%);
+  background:#0e0018;border:1px solid #3a6a20;color:#88dd66;
+  font-family:'Courier New',monospace;font-size:12px;padding:12px 24px;
+  letter-spacing:1px;z-index:200;text-align:center;"></div>
 
 <script>
 (function () {
@@ -712,13 +721,19 @@
     es.onmessage = (e) => {
       const msg = JSON.parse(e.data);
       if (msg.type === 'state') {
-        W = msg.world;
-        if (msg.combatEvents && msg.combatEvents.length) combatEvents.push(...msg.combatEvents);
-        renderAll();
-        syncControls(W.speed, W.paused);
-        setViewerCount(W.viewers || 0);
+        if (viewerPaused) {
+          // Buffer the latest world but don't render
+          pendingWorld = msg.world;
+          if (msg.combatEvents && msg.combatEvents.length) combatEvents.push(...msg.combatEvents);
+        } else {
+          W = msg.world;
+          if (msg.combatEvents && msg.combatEvents.length) combatEvents.push(...msg.combatEvents);
+          renderAll();
+          syncControls(W.speed, W.paused);
+          setViewerCount(W.viewers || 0);
+        }
       } else if (msg.type === 'control') {
-        syncControls(msg.speed, msg.paused);
+        if (!viewerPaused) syncControls(msg.speed, msg.paused);
       } else if (msg.type === 'viewers') {
         setViewerCount(msg.viewers || 0);
       }
@@ -726,14 +741,7 @@
   }
 
   function syncControls(speed, paused) {
-    document.querySelectorAll('#controls button:not(.danger)').forEach(b => b.classList.remove('active'));
-    if (paused) {
-      document.getElementById('btn-pause').classList.add('active');
-    } else {
-      const map = { 1:'btn-slow', 2:'btn-med', 4:'btn-fast' };
-      const btn = document.getElementById(map[speed]);
-      if (btn) btn.classList.add('active');
-    }
+    // Viewer has no speed buttons — nothing to sync server-side state to
   }
 
   // ─────────────────────────────────────────────────────────
@@ -1193,20 +1201,75 @@
   }
 
   // ─────────────────────────────────────────────────────────
-  //  Controls — send commands to server
+  //  Viewer-local pause — freezes display, world keeps running
   // ─────────────────────────────────────────────────────────
-  document.getElementById('btn-slow').onclick  = () => fetch('/api/speed', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({speed:1}) });
-  document.getElementById('btn-med').onclick   = () => fetch('/api/speed', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({speed:2}) });
-  document.getElementById('btn-fast').onclick  = () => fetch('/api/speed', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({speed:4}) });
-  document.getElementById('btn-pause').onclick = () => fetch('/api/pause', { method:'POST' });
+  let viewerPaused = false;
+  let pendingWorld  = null; // holds last received state while paused
 
-  // Reset modal
-  document.getElementById('btn-reset').onclick     = () => document.getElementById('reset-modal').classList.add('open');
-  document.getElementById('modal-cancel').onclick  = () => document.getElementById('reset-modal').classList.remove('open');
-  document.getElementById('modal-confirm').onclick = () => {
-    document.getElementById('reset-modal').classList.remove('open');
-    fetch('/api/reset', { method:'POST' });
+  document.getElementById('btn-pause').onclick = function() {
+    viewerPaused = !viewerPaused;
+    this.textContent = viewerPaused ? '▶ Resume View' : '❙❙ Pause View';
+    this.classList.toggle('active', viewerPaused);
+    if (!viewerPaused && pendingWorld) {
+      W = pendingWorld; pendingWorld = null;
+      renderAll(); syncControls(W.speed, W.paused); setViewerCount(W.viewers || 0);
+    }
   };
+
+  // ─────────────────────────────────────────────────────────
+  //  Join the World
+  // ─────────────────────────────────────────────────────────
+  let joinA = 0, joinB = 0, joinCorrect = 0;
+
+  function openJoinModal() {
+    // Generate a simple math question
+    joinA = Math.floor(Math.random() * 9) + 1;
+    joinB = Math.floor(Math.random() * 9) + 1;
+    joinCorrect = joinA + joinB;
+    document.getElementById('join-question').textContent = `What is ${joinA} + ${joinB}?`;
+    document.getElementById('join-answer').value = '';
+    document.getElementById('join-error').textContent = '';
+    const modal = document.getElementById('join-modal');
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('join-answer').focus(), 80);
+  }
+
+  function closeJoinModal() {
+    document.getElementById('join-modal').style.display = 'none';
+  }
+
+  async function submitJoin() {
+    const answer = parseInt(document.getElementById('join-answer').value);
+    if (answer !== joinCorrect) {
+      document.getElementById('join-error').textContent = 'Incorrect — try again.';
+      document.getElementById('join-answer').value = '';
+      document.getElementById('join-answer').focus();
+      // Refresh the question
+      joinA = Math.floor(Math.random() * 9) + 1;
+      joinB = Math.floor(Math.random() * 9) + 1;
+      joinCorrect = joinA + joinB;
+      document.getElementById('join-question').textContent = `What is ${joinA} + ${joinB}?`;
+      return;
+    }
+    closeJoinModal();
+    try {
+      const res  = await fetch('/api/join', { method:'POST', headers:{'Content-Type':'application/json'} });
+      const data = await res.json();
+      if (data.ok && data.heroName) showJoinToast(data.heroName);
+    } catch(e) { /* silent */ }
+  }
+
+  function showJoinToast(name) {
+    const t = document.getElementById('join-toast');
+    t.textContent = `⚔ ${name} has entered the world!`;
+    t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 4000);
+  }
+
+  document.getElementById('btn-join').onclick    = openJoinModal;
+  document.getElementById('join-cancel').onclick = closeJoinModal;
+  document.getElementById('join-confirm').onclick = submitJoin;
+  document.getElementById('join-answer').addEventListener('keydown', e => { if (e.key === 'Enter') submitJoin(); });
 
   // ─────────────────────────────────────────────────────────
   //  Boot
