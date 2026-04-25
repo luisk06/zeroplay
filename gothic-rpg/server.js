@@ -114,6 +114,8 @@ function serializeWorld(w) {
       motto: h.motto || '',
       retired: h.retired || false, retiredAt: h.retiredAt || null,
       dailyViewSeconds: h.dailyViewSeconds || 0, dailyViewDay: h.dailyViewDay || null,
+      presence: h.presence || 0,
+      invokeUsedDay: h.invokeUsedDay || null,
     })),
     enemies: w.enemies.map(e => ({
       id:e.id, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,
@@ -127,6 +129,7 @@ function serializeWorld(w) {
 
 // Single-hero live data for the hero page
 function liveHero(h) {
+  const tier = getPresenceTier(h.presence);
   return {
     name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk, baseAtk:h.baseAtk,
     xp:h.xp, level:h.level, loot:h.loot, kills:h.kills,
@@ -136,6 +139,11 @@ function liveHero(h) {
     hasClaim: !!h.claimToken,
     dailyViewSeconds: getDailyView(h),
     dailyViewGoal: DAILY_GOAL_SECONDS,
+    presence: Math.round(h.presence || 0),
+    presenceMax: PRESENCE_MAX,
+    presenceTier: tier.name,
+    presenceAtkMult: tier.atkMult,
+    canInvoke: canInvoke(h),
     target: h.target ? { name:h.target.name, hp:h.target.hp, maxhp:h.target.maxhp } : null,
     log: W.log.filter(l => l.msg.startsWith(h.name.split(' ')[0])).slice(0, 12)
   };
@@ -146,15 +154,22 @@ function liveSnapshot() {
     tick:W.tick, year:W.year, era:era(),
     totalKills:W.totalKills, totalDeaths:W.totalDeaths, totalLoot:W.totalLoot, totalBattles:W.totalBattles,
     speed:simSpeed, paused:simPaused, viewers: clients.size,
-    heroes: W.heroes.map(h => ({
-      name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk, baseAtk:h.baseAtk,
-      xp:h.xp, level:h.level, loot:h.loot, kills:h.kills,
-      color:h.color, state:h.state, stateTimer:h.stateTimer,
-      isBlonde:h.isBlonde, fleeCount:h.fleeCount, falls:h.falls||0, image:h.image,
-      motto: h.motto || '', hasClaim: !!h.claimToken,
-      dailyViewSeconds: getDailyView(h), dailyViewGoal: DAILY_GOAL_SECONDS,
-      target: h.target ? { name:h.target.name, hp:h.target.hp, maxhp:h.target.maxhp } : null
-    })),
+    heroes: W.heroes.map(h => {
+      const tier = getPresenceTier(h.presence);
+      return {
+        name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk, baseAtk:h.baseAtk,
+        xp:h.xp, level:h.level, loot:h.loot, kills:h.kills,
+        color:h.color, state:h.state, stateTimer:h.stateTimer,
+        isBlonde:h.isBlonde, fleeCount:h.fleeCount, falls:h.falls||0, image:h.image,
+        motto: h.motto || '', hasClaim: !!h.claimToken,
+        dailyViewSeconds: getDailyView(h), dailyViewGoal: DAILY_GOAL_SECONDS,
+        presence: Math.round(h.presence || 0),
+        presenceMax: PRESENCE_MAX,
+        presenceTier: tier.name,
+        presenceAtkMult: tier.atkMult,
+        target: h.target ? { name:h.target.name, hp:h.target.hp, maxhp:h.target.maxhp } : null
+      };
+    }),
     enemies: W.enemies.map(e => ({
       id:e.id, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,
       xpReward:e.xpReward, tier:e.tier, state:e.state,
@@ -251,12 +266,14 @@ function defeatHero(h) {
 function updateHero(h) {
   h.stateTimer--;
 
+  // Presence-based healing (explore / flee / exalted-in-combat)
+  presenceHeal(h);
+
   if (h.state === 'wounded') {
-    // Slowly recover HP while wounded
     h.hp = Math.min(h.hp + 1, Math.floor(h.maxhp * 0.5));
     if (h.stateTimer <= 0) {
       h.state = 'explore';
-      h.hp = Math.floor(h.maxhp * 0.5); // return at half HP
+      h.hp = Math.floor(h.maxhp * 0.5);
       h.stateTimer = 20 + rng(20);
       addLog(`${firstName(h)} returns to the field, scarred but resolute.`, 'explore');
     }
@@ -282,14 +299,24 @@ function updateHero(h) {
       return;
     }
     if (rngf() < 0.18) {
-      const dmg = h.atk + rng(3);
+      // Presence ATK bonus + invoke crit
+      let dmg = presenceAtk(h) + rng(3);
+      let isCrit = false;
+      if (h.invokePending) {
+        dmg = dmg * 3;
+        isCrit = true;
+        h.invokePending = false;
+        addLog(`${firstName(h)} channels the Presence — a crushing blow! (${dmg} dmg)`, 'level');
+        pendingCombatEvents.push({ heroName:h.name, type:'invoke-crit' });
+      }
       h.target.hp -= dmg;
       pendingCombatEvents.push({ heroName:h.name, type:'enemy-hit' });
       if (h.target.hp <= 0) {
         const tier = h.target.tier || 1;
         const suffix = tier >= 4 ? ' — a mighty victory!' : tier === 3 ? ' — a hard-won fight.' : '!';
         addLog(`${firstName(h)} slew ${h.target.name}${suffix}`, 'combat');
-        h.xp += h.target.xpReward; h.kills++; W.totalKills++; W.totalBattles++;
+        const earnedXp = presenceXp(h, h.target.xpReward);
+        h.xp += earnedXp; h.kills++; W.totalKills++; W.totalBattles++;
         W.enemies = W.enemies.filter(e => e !== h.target);
         h.state = 'explore'; h.target = null; h.stateTimer = 15;
         if (h.xp >= h.level * 15) {
@@ -304,7 +331,7 @@ function updateHero(h) {
       h.hp -= dmg;
       pendingCombatEvents.push({ heroName:h.name, type:'hero-hit' });
       if (h.hp <= 0) {
-        defeatHero(h); // <-- defeat with consequences, no removal
+        defeatHero(h);
       } else if (h.hp < h.maxhp * 0.25 && !h.isBlonde) {
         h.fleeCount++;
         addLog(`${firstName(h)} flees from ${h.target.name}!`, 'explore');
@@ -349,6 +376,92 @@ function getDailyView(hero) {
   if (hero.dailyViewDay !== today) return 0;
   return hero.dailyViewSeconds || 0;
 }
+
+// ── Presence system ───────────────────────────────────────────────────────────
+// Presence builds while viewers watch a hero's page and decays when no one watches.
+// It unlocks three tiers of stat bonuses (Noticed / Witnessed / Exalted).
+//
+// Accrual: presenceTick = viewers / (viewers + 2)  — diminishing returns
+//   1 viewer  → +0.33/s     4 viewers → +0.67/s
+//   2 viewers → +0.50/s    10 viewers → +0.83/s
+//
+// Decay: −0.2/s when no viewers (hero stays boosted a while after audience leaves)
+// Cap: 100 points
+
+const PRESENCE_MAX    = 100;
+const PRESENCE_DECAY  = 0.2;   // per second when viewers = 0
+const PRESENCE_TIERS  = [
+  { min: 90, name: 'Exalted',   atkMult: 1.35, xpMult: 1.25, healRate: 1, healInCombat: true  },
+  { min: 60, name: 'Witnessed', atkMult: 1.20, xpMult: 1.15, healRate: 1, healInCombat: false },
+  { min: 30, name: 'Noticed',   atkMult: 1.10, xpMult: 1.10, healRate: 0, healInCombat: false },
+  { min:  0, name: 'Unobserved',atkMult: 1.00, xpMult: 1.00, healRate: 0, healInCombat: false },
+];
+
+function getPresenceTier(presence) {
+  for (const t of PRESENCE_TIERS) if ((presence || 0) >= t.min) return t;
+  return PRESENCE_TIERS[PRESENCE_TIERS.length - 1];
+}
+
+// Called every second — ticks presence up or down based on live viewer count
+function tickPresence() {
+  for (const hero of W.heroes) {
+    const viewers = heroViewerCount(hero.name);
+    if (viewers > 0) {
+      // Diminishing returns: each extra viewer adds less
+      const delta = viewers / (viewers + 2);
+      hero.presence = Math.min(PRESENCE_MAX, (hero.presence || 0) + delta);
+    } else {
+      hero.presence = Math.max(0, (hero.presence || 0) - PRESENCE_DECAY);
+    }
+  }
+}
+setInterval(tickPresence, 1000);
+
+// Apply presence-based ATK bonus. Called in updateHero before damage calc.
+function presenceAtk(hero) {
+  const tier = getPresenceTier(hero.presence);
+  return Math.round(hero.atk * tier.atkMult);
+}
+
+// Apply presence-based XP bonus. Called when XP is awarded.
+function presenceXp(hero, baseXp) {
+  const tier = getPresenceTier(hero.presence);
+  return Math.round(baseXp * tier.xpMult);
+}
+
+// Presence-based out-of-combat healing (called each tick in updateHero)
+function presenceHeal(hero) {
+  const tier = getPresenceTier(hero.presence);
+  if (!tier.healRate) return;
+  if (hero.state === 'hunt' && !tier.healInCombat) return;
+  if (hero.state === 'wounded') return; // wounded recovery handles its own HP
+  hero.hp = Math.min(hero.maxhp, (hero.hp || 0) + tier.healRate);
+}
+
+// ── Invoke ability ────────────────────────────────────────────────────────────
+// Owner can spend 40 Presence for a guaranteed 3× crit on the next hit.
+// Tracked per-hero as `invokeReady` (bool) and `invokePending` (bool).
+// Resets daily alongside dailyViewSeconds.
+const INVOKE_COST = 40;
+
+function canInvoke(hero) {
+  return (hero.presence || 0) >= INVOKE_COST &&
+         !hero.invokeUsedDay &&
+         hero.state === 'hunt' &&
+         !!hero.claimToken;
+}
+
+app.post('/api/hero/invoke', (req, res) => {
+  const { heroName, claimToken } = req.body;
+  const hero = findHeroBySlugOrName(heroName);
+  if (!hero || !hero.claimToken) return res.status(404).json({ error: 'Hero not found' });
+  if (hero.claimToken !== claimToken) return res.status(403).json({ error: 'Invalid token' });
+  if (!canInvoke(hero)) return res.status(400).json({ error: 'Invoke not available' });
+  hero.presence = Math.max(0, (hero.presence || 0) - INVOKE_COST);
+  hero.invokePending = true;
+  hero.invokeUsedDay = utcDayStamp();
+  res.json({ ok: true, presence: hero.presence });
+});
 
 function tick() {
   W.tick++;
@@ -683,7 +796,8 @@ async function boot() {
       isBlonde:h.isBlonde||false, fleeCount:h.fleeCount||0, image:h.image||HERO_IMAGES[0],
       claimToken: h.claimToken || null, motto: h.motto || '',
       retired: h.retired || false, retiredAt: h.retiredAt || null,
-      dailyViewSeconds: h.dailyViewSeconds || 0, dailyViewDay: h.dailyViewDay || null
+      dailyViewSeconds: h.dailyViewSeconds || 0, dailyViewDay: h.dailyViewDay || null,
+      presence: h.presence || 0, invokeUsedDay: h.invokeUsedDay || null
     }));
     W.enemies = (saved.enemies || []).map(e => ({
       id:enemyIdCounter++, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,

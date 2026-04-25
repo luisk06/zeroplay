@@ -1285,17 +1285,21 @@
     const sorted = [...W.heroes].sort((a, b) => b.kills - a.kills || b.level - a.level).slice(0, 10);
     if (!sorted.length) { el.innerHTML = `<div style="color:var(--text-lo);font-size:12px;">No heroes yet.</div>`; return; }
     el.innerHTML = sorted.map((h, i) => {
-      const rank      = getRank(h.level);
-      const mine      = claim && claim.heroName === h.name;
-      const inCombat  = h.state === 'hunt';
+      const rank       = getRank(h.level);
+      const mine       = claim && claim.heroName === h.name;
+      const inCombat   = h.state === 'hunt';
       const hasViewers = (h.heroViewers || 0) > 0;
-      const stateIcon = inCombat ? '⚔' : h.state === 'wounded' ? '✞' : h.state === 'flee' ? '↪' : '◈';
+      const stateIcon  = inCombat ? '⚔' : h.state === 'wounded' ? '✞' : h.state === 'flee' ? '↪' : '◈';
+      const presence   = h.presence || 0;
+      const tierColor  = presence >= 90 ? '#e8b830' : presence >= 60 ? '#b070e0' : presence >= 30 ? '#8050c0' : '';
+      const portStyle  = tierColor ? `border-color:${tierColor};box-shadow:0 0 10px ${tierColor}44;filter:brightness(1);` : '';
+      const tierName   = presence >= 90 ? 'Exalted' : presence >= 60 ? 'Witnessed' : presence >= 30 ? 'Noticed' : '';
       return `<a class="lb-row" href="/hero?name=${slugify(h.name)}">
         <span class="lb-rank">${i + 1}</span>
-        ${h.image ? `<img class="lb-port${hasViewers ? ' has-viewers' : ''}" src="${h.image}" alt="${h.name}">` : ''}
+        ${h.image ? `<img class="lb-port" src="${h.image}" alt="${h.name}" style="${portStyle}">` : ''}
         <div class="lb-info">
           <div class="lb-name ${mine ? 'lb-mine' : ''}">${mine ? '★ ' : ''}${h.name}${inCombat ? '<span class="lb-combat-dot" title="In combat"></span>' : ''}</div>
-          <div class="lb-sub">${rank.badge} ${rank.name} · Lv ${h.level} · ${stateIcon}${hasViewers ? ` · 👁 ${h.heroViewers}` : ''}</div>
+          <div class="lb-sub">${rank.badge} ${rank.name} · Lv ${h.level} · ${stateIcon}${tierName ? ` · <span style="color:${tierColor}">${tierName}</span>` : ''}${hasViewers ? ` · 👁 ${h.heroViewers}` : ''}</div>
         </div>
         <span class="lb-kills" title="kills">${h.kills}⚔</span>
       </a>`;

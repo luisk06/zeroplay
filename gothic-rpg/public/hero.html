@@ -156,6 +156,74 @@
     .dg-fill   { height:100%; border-radius:1px; transition:width 0.6s; background:#4a2a80; }
     .dg-fill.done { background:#44aa55; }
 
+    /* ── Presence panel ── */
+    #presence-panel {
+      background:#080012; border:1px solid #3a1a58; padding:16px 18px; margin-bottom:24px;
+      position:relative; overflow:hidden;
+    }
+    /* Animated background shimmer when Exalted */
+    #presence-panel.exalted::before {
+      content:''; position:absolute; inset:0;
+      background:linear-gradient(120deg, transparent 0%, #9a60c820 50%, transparent 100%);
+      animation:presence-shimmer 2.5s ease-in-out infinite;
+      pointer-events:none;
+    }
+    @keyframes presence-shimmer {
+      0%   { transform:translateX(-100%); }
+      100% { transform:translateX(100%); }
+    }
+    #presence-tier-name {
+      font-size:10px; letter-spacing:3px; text-transform:uppercase;
+      margin-bottom:3px; font-weight:normal;
+    }
+    #presence-tagline { font-size:11px; color:var(--text-lo); letter-spacing:0.5px; margin-bottom:10px; }
+    .presence-bar-wrap { margin-bottom:10px; }
+    .presence-bar-label { font-size:9px; letter-spacing:2px; color:var(--text-lo); text-transform:uppercase; margin-bottom:4px; display:flex; justify-content:space-between; }
+    .presence-bar-track { height:8px; background:#1a0828; border-radius:1px; overflow:hidden; position:relative; }
+    .presence-bar-fill  {
+      height:100%; border-radius:1px; transition:width 0.8s ease, background 1s ease;
+      background:#4a2a80;
+    }
+    .presence-bar-fill.noticed   { background:#6a40a0; }
+    .presence-bar-fill.witnessed { background:#8a50c0; box-shadow:0 0 8px #8a50c055; }
+    .presence-bar-fill.exalted   { background:linear-gradient(90deg,#9a60c8,#e8b830); box-shadow:0 0 12px #e8b83055; animation:presence-pulse 1.5s ease-in-out infinite alternate; }
+    @keyframes presence-pulse { from { opacity:1; } to { opacity:0.75; } }
+    /* Tier threshold ticks */
+    .presence-tick { position:absolute; top:0; bottom:0; width:1px; background:#ffffff22; }
+    .presence-bonuses { display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; }
+    .presence-bonus-chip {
+      font-size:10px; letter-spacing:0.5px; padding:2px 8px;
+      border:1px solid; border-radius:1px;
+      transition:opacity 0.4s, color 0.4s;
+    }
+    .presence-bonus-chip.active { opacity:1; }
+    .presence-bonus-chip.inactive { opacity:0.3; }
+    /* Invoke button */
+    #invoke-btn {
+      display:none; margin-top:12px; width:100%;
+      background:#1a0820; border:1px solid #9a60c8; color:#c080f0;
+      font-family:'Courier New',monospace; font-size:11px; letter-spacing:2px;
+      text-transform:uppercase; padding:9px; cursor:pointer;
+      transition:background 0.15s, box-shadow 0.15s;
+      box-shadow:0 0 10px #9a60c833;
+    }
+    #invoke-btn:hover { background:#280040; box-shadow:0 0 18px #9a60c866; }
+    #invoke-btn:disabled { opacity:0.4; cursor:not-allowed; box-shadow:none; }
+    /* Viewer join pulse */
+    #viewer-join-msg {
+      font-size:10px; color:var(--purple); letter-spacing:1px;
+      margin-top:6px; min-height:14px; opacity:0; transition:opacity 0.4s;
+    }
+    #viewer-join-msg.show { opacity:1; }
+
+    /* ── Invoke flash ── */
+    @keyframes invoke-flash {
+      0%   { filter:brightness(0.8) saturate(0.85); }
+      10%  { filter:brightness(4) saturate(0) sepia(1) hue-rotate(270deg); }
+      100% { filter:brightness(0.8) saturate(0.85); }
+    }
+    .invoke-flash { animation:invoke-flash 0.6s ease-out forwards; }
+
     /* Share section */
     #share-section { margin-top:28px; padding-top:16px; border-top:1px solid var(--border2); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
     #share-url {
@@ -222,6 +290,32 @@
       <div style="margin-top:10px;">
         <button class="op-btn retire" onclick="retireHero()">⚰ Retire Hero</button>
       </div>
+    </div>
+
+    <!-- Presence panel (always visible) -->
+    <div id="presence-panel">
+      <div id="presence-tier-name" style="color:var(--text-lo);">Unobserved</div>
+      <div id="presence-tagline">No watchers. The hero fights alone.</div>
+      <div class="presence-bar-wrap">
+        <div class="presence-bar-label">
+          <span>Presence</span>
+          <span id="presence-val">0 / 100</span>
+        </div>
+        <div class="presence-bar-track">
+          <div class="presence-bar-fill" id="presence-fill" style="width:0%;"></div>
+          <div class="presence-tick" style="left:30%;" title="Noticed"></div>
+          <div class="presence-tick" style="left:60%;" title="Witnessed"></div>
+          <div class="presence-tick" style="left:90%;" title="Exalted"></div>
+        </div>
+      </div>
+      <div class="presence-bonuses">
+        <span class="presence-bonus-chip inactive" id="pb-atk" style="color:#e05555;border-color:#5a1515;">⚔ +10% ATK</span>
+        <span class="presence-bonus-chip inactive" id="pb-xp"  style="color:#5599dd;border-color:#153060;">★ +10% XP</span>
+        <span class="presence-bonus-chip inactive" id="pb-heal" style="color:#44aa55;border-color:#154020;">♥ Regeneration</span>
+        <span class="presence-bonus-chip inactive" id="pb-combat-heal" style="color:#e8b830;border-color:#5a3a10;">✦ Combat Heal</span>
+      </div>
+      <div id="viewer-join-msg"></div>
+      <button id="invoke-btn" onclick="invokePresence()">✦ Invoke Presence — Channel the Watchers</button>
     </div>
 
     <!-- Arena (only when hunting) -->
@@ -392,8 +486,17 @@
     document.getElementById('bar-xp').style.width = Math.round(xpPct*100) + '%';
     document.getElementById('bar-xp-val').textContent = `${hero.xp} / ${hero.level*15}`;
 
-    // Stats
-    document.getElementById('s-atk').textContent   = hero.atk;
+    // Presence panel
+    renderPresence(hero);
+
+    // Stats — show effective ATK if presence bonus active
+    const atkEl = document.getElementById('s-atk');
+    if (hero.presenceAtkMult && hero.presenceAtkMult > 1) {
+      const effective = Math.round(hero.atk * hero.presenceAtkMult);
+      atkEl.innerHTML = `${effective}<span style="font-size:10px;color:var(--purple);"> (+${effective-hero.atk})</span>`;
+    } else {
+      atkEl.textContent = hero.atk;
+    }
     document.getElementById('s-kills').textContent = hero.kills;
     document.getElementById('s-loot').textContent  = hero.loot;
     const fallsEl = document.getElementById('s-falls');
@@ -472,7 +575,119 @@
     }
   }
 
-  // Hit effects
+  // ── Presence rendering ───────────────────────────────────
+  const PRESENCE_TIERS = [
+    { min:90, name:'Exalted',    tagline:'The crowd roars. This hero is unstoppable.',     color:'#e8b830', fillClass:'exalted',   atk:'+35% ATK', xp:'+25% XP', heal:true, combatHeal:true  },
+    { min:60, name:'Witnessed',  tagline:'Many eyes watch. The hero grows stronger.',       color:'#b070e0', fillClass:'witnessed', atk:'+20% ATK', xp:'+15% XP', heal:true, combatHeal:false },
+    { min:30, name:'Noticed',    tagline:'A few souls are watching. Power stirs.',          color:'#8050c0', fillClass:'noticed',   atk:'+10% ATK', xp:'+10% XP', heal:false,combatHeal:false },
+    { min: 0, name:'Unobserved', tagline:'No watchers. The hero fights alone.',             color:'#6a4888', fillClass:'',          atk:null,        xp:null,       heal:false,combatHeal:false },
+  ];
+
+  function getClientTier(presence) {
+    for (const t of PRESENCE_TIERS) if ((presence || 0) >= t.min) return t;
+    return PRESENCE_TIERS[PRESENCE_TIERS.length - 1];
+  }
+
+  let _prevPresenceTierName = null;
+  let _prevViewers = 0;
+
+  function renderPresence(hero) {
+    const presence  = hero.presence || 0;
+    const presMax   = hero.presenceMax || 100;
+    const tier      = getClientTier(presence);
+    const panel     = document.getElementById('presence-panel');
+    const fill      = document.getElementById('presence-fill');
+    const tierName  = document.getElementById('presence-tier-name');
+    const tagline   = document.getElementById('presence-tagline');
+    const valEl     = document.getElementById('presence-val');
+    const invokeBtn = document.getElementById('invoke-btn');
+
+    if (!panel) return;
+
+    // Panel class for shimmer effect
+    panel.className = tier.name === 'Exalted' ? 'exalted' : '';
+
+    // Fill bar
+    const pct = Math.min(100, Math.round(presence / presMax * 100));
+    if (fill) {
+      fill.style.width = pct + '%';
+      fill.className = `presence-bar-fill${tier.fillClass ? ' ' + tier.fillClass : ''}`;
+    }
+    if (tierName) { tierName.textContent = tier.name; tierName.style.color = tier.color; }
+    if (tagline)  tagline.textContent = tier.tagline;
+    if (valEl)    valEl.textContent   = `${Math.round(presence)} / ${presMax}`;
+
+    // Bonus chips
+    function setChip(id, active, label) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle('active', active);
+      el.classList.toggle('inactive', !active);
+    }
+    setChip('pb-atk',         presence >= 30);
+    setChip('pb-xp',          presence >= 30);
+    setChip('pb-heal',        presence >= 60);
+    setChip('pb-combat-heal', presence >= 90);
+
+    // Update chip labels dynamically
+    if (presence >= 90) {
+      document.getElementById('pb-atk').textContent  = '⚔ +35% ATK';
+      document.getElementById('pb-xp').textContent   = '★ +25% XP';
+    } else if (presence >= 60) {
+      document.getElementById('pb-atk').textContent  = '⚔ +20% ATK';
+      document.getElementById('pb-xp').textContent   = '★ +15% XP';
+    } else {
+      document.getElementById('pb-atk').textContent  = '⚔ +10% ATK';
+      document.getElementById('pb-xp').textContent   = '★ +10% XP';
+    }
+
+    // Invoke button — owner only, in combat, presence ≥ 60, canInvoke
+    const claim = getClaim();
+    const isOwner = claim && claim.heroName === hero.name;
+    if (invokeBtn) {
+      if (isOwner && hero.canInvoke) {
+        invokeBtn.style.display = '';
+        invokeBtn.disabled = false;
+      } else if (isOwner && hero.state === 'hunt' && presence >= INVOKE_COST_CLIENT && !hero.canInvoke) {
+        invokeBtn.style.display = '';
+        invokeBtn.disabled = true;
+        invokeBtn.textContent = '✦ Invoke used today';
+      } else {
+        invokeBtn.style.display = 'none';
+      }
+    }
+
+    // Tier change notification
+    if (_prevPresenceTierName && _prevPresenceTierName !== tier.name) {
+      showViewerJoinMsg(`Presence ascends: ${tier.name}`, tier.color);
+    }
+    _prevPresenceTierName = tier.name;
+  }
+
+  const INVOKE_COST_CLIENT = 40;
+
+  // Show a temporary message in the presence panel
+  let _vjTimer = null;
+  function showViewerJoinMsg(msg, color) {
+    const el = document.getElementById('viewer-join-msg');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = color || 'var(--purple)';
+    el.classList.add('show');
+    clearTimeout(_vjTimer);
+    _vjTimer = setTimeout(() => el.classList.remove('show'), 3500);
+  }
+
+  // Viewer count change — pulse a message
+  let _prevViewerCount = 0;
+  function onViewerCountChange(newCount) {
+    if (newCount > _prevViewerCount && _prevViewerCount > 0) {
+      showViewerJoinMsg(`+${newCount - _prevViewerCount} soul${newCount - _prevViewerCount > 1 ? 's' : ''} joined — presence strengthens`, '#b070e0');
+    }
+    _prevViewerCount = newCount;
+  }
+
+  // ── Hit effects
   function triggerFlash(el, cls) {
     if (!el) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
     el.addEventListener('animationend', ()=>el.classList.remove(cls), {once:true});
@@ -490,6 +705,12 @@
       } else if (ev.type === 'enemy-hit') {
         triggerFlash(document.querySelector('.arena-enemy-img'), 'hit-enemy');
         triggerShake(document.querySelector('.arena-enemy-fighter'), 'shake-enemy');
+      } else if (ev.type === 'invoke-crit') {
+        // Invoke lands — flash both fighters and shake the presence bar
+        triggerFlash(document.querySelector('.arena-hero-img'), 'invoke-flash');
+        triggerFlash(document.querySelector('.arena-enemy-img'), 'hit-enemy');
+        triggerShake(document.querySelector('.arena-enemy-fighter'), 'shake-enemy');
+        showViewerJoinMsg('✦ Invoke struck true!', '#e8b830');
       }
     }
   }
@@ -511,7 +732,9 @@
           render(msg.hero, msg.viewers, msg.world);
         }
       } else if (msg.type === 'viewers') {
-        document.getElementById('viewer-num').textContent = msg.viewers || 0;
+        const n = msg.viewers || 0;
+        document.getElementById('viewer-num').textContent = n;
+        onViewerCountChange(n);
       }
     };
     es.onerror = () => setTimeout(connect, 3000);
@@ -575,6 +798,24 @@
     }
   }
   window.retireHero = retireHero;
+
+  async function invokePresence() {
+    const claim = getClaim();
+    if (!claim) return;
+    const btn = document.getElementById('invoke-btn');
+    if (btn) btn.disabled = true;
+    const res = await fetch('/api/hero/invoke', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ heroName: claim.heroName, claimToken: claim.claimToken })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      showViewerJoinMsg(data.error || 'Invoke failed', '#cc4444');
+      if (btn) btn.disabled = false;
+    }
+    // Success is handled by the combat event 'invoke-crit' coming back via SSE
+  }
+  window.invokePresence = invokePresence;
 
   function copyLink() {
     const urlEl = document.getElementById('share-url');
