@@ -671,13 +671,13 @@
   const ENEMY_NAMES  = ['Skeleton','Ghoul','Spider','Shade','Golem','Spectre','Troll'];
   // Per-enemy type stats: hp range, atk range, xpReward range
   const ENEMY_STATS  = {
-    Skeleton: { hp: [6,  10], atk: [2, 3], xp: [4,  7],  tier: 1 },
-    Spider:   { hp: [8,  12], atk: [2, 4], xp: [6,  9],  tier: 1 },
-    Ghoul:    { hp: [10, 16], atk: [3, 5], xp: [8,  12], tier: 2 },
-    Shade:    { hp: [12, 18], atk: [3, 5], xp: [10, 14], tier: 2 },
-    Spectre:  { hp: [14, 20], atk: [4, 6], xp: [13, 17], tier: 3 },
-    Golem:    { hp: [18, 26], atk: [5, 7], xp: [16, 22], tier: 3 },
-    Troll:    { hp: [22, 32], atk: [6, 9], xp: [20, 28], tier: 4 },
+    Skeleton: { hp: [22,  34], atk: [2, 3], xp: [4,  7],  tier: 1 },
+    Spider:   { hp: [26,  38], atk: [2, 4], xp: [6,  9],  tier: 1 },
+    Ghoul:    { hp: [34,  50], atk: [3, 5], xp: [8,  12], tier: 2 },
+    Shade:    { hp: [38,  56], atk: [3, 5], xp: [10, 14], tier: 2 },
+    Spectre:  { hp: [48,  68], atk: [4, 6], xp: [13, 17], tier: 3 },
+    Golem:    { hp: [60,  86], atk: [5, 7], xp: [16, 22], tier: 3 },
+    Troll:    { hp: [80, 110], atk: [6, 9], xp: [20, 28], tier: 4 },
   };
   const LOOT_NAMES   = ['Tome','Blade','Relic','Crystal','Potion','Amulet','Shield'];
   const SAVE_INTERVAL_TICKS = 300;
@@ -896,9 +896,9 @@
         addLog(`${firstName(h)} found a ${pick(LOOT_NAMES)}!`, 'loot');
       }
       let target = W.enemies.find(e => e.hp > 0 && !e.engagedBy);
-      if (target && rngf() < 0.12) {
+      if (target && rngf() < 0.06) {
         h.state = 'hunt'; h.target = target; target.engagedBy = h;
-        h.stateTimer = 40 + rng(20);
+        h.stateTimer = 200 + rng(100);
       }
     } else if (h.state === 'hunt') {
       if (!h.target || h.target.hp <= 0 || h.stateTimer <= 0) {
@@ -906,7 +906,7 @@
         h.state = 'explore'; h.target = null; h.stateTimer = 20 + rng(20);
         return;
       }
-      if (rngf() < 0.4) {
+      if (rngf() < 0.18) {
         let dmg = h.atk + rng(3);
         h.target.hp -= dmg;
         combatEvents.push({ heroName: h.name, type: 'enemy-hit', tick: W.tick });
@@ -924,7 +924,7 @@
           }
         }
       }
-      if (h.target && rngf() < 0.3) {
+      if (h.target && rngf() < 0.14) {
         let dmg = h.target.atk + rng(2);
         h.hp -= dmg;
         combatEvents.push({ heroName: h.name, type: 'hero-hit', tick: W.tick });
