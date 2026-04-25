@@ -38,10 +38,14 @@ function loadState() {
   return defaultState();
 }
 
-// Save state to disk
+// Save state to disk (no-op on read-only filesystems like Vercel)
 function saveState(state) {
   state.savedAt = new Date().toISOString();
-  fs.writeFileSync(SAVE_FILE, JSON.stringify(state, null, 2), 'utf8');
+  try {
+    fs.writeFileSync(SAVE_FILE, JSON.stringify(state, null, 2), 'utf8');
+  } catch (e) {
+    // Vercel serverless — filesystem is read-only, silently skip
+  }
 }
 
 // GET /api/state — return current saved state
@@ -61,11 +65,12 @@ app.post('/api/state', (req, res) => {
 
 // POST /api/reset — wipe save file and return fresh state
 app.post('/api/reset', (req, res) => {
-  if (fs.existsSync(SAVE_FILE)) {
-    fs.unlinkSync(SAVE_FILE);
+  try {
+    if (fs.existsSync(SAVE_FILE)) fs.unlinkSync(SAVE_FILE);
+  } catch (e) {
+    // Vercel — ignore
   }
-  const fresh = defaultState();
-  res.json(fresh);
+  res.json(defaultState());
 });
 
 app.listen(PORT, () => {
