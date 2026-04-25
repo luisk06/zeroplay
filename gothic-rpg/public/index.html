@@ -1485,7 +1485,8 @@
       }
     }
 
-    // Mountain markers — hardcoded major peaks
+    // Mountain markers — placed in the geo layer so they scale with land
+    // (mountains are fixed geography, not interactive — scaling is fine)
     const MOUNTAINS = [
       { name:'Mt. Fuji',    lon:138.7274, lat:35.3606 },
       { name:'Mt. Hotaka',  lon:137.6478, lat:36.2891 },
@@ -1503,7 +1504,7 @@
           font-size="8" fill="#5a3070" font-family="Courier New" opacity="0.8">${m.name}</text>`;
     }).join('');
 
-    // Hero city dots
+    // Pre-compute projected city positions (used both for initial render and zoom updates)
     const heroAtLocation = {};
     (W ? W.heroes || [] : []).forEach(h => {
       const loc = heroLocation(h.name);
@@ -1511,78 +1512,110 @@
       heroAtLocation[loc.name].push(h);
     });
 
-    const cityDots = MAP_LOCATIONS.map(loc => {
+    // Each city marker is a <g> with data-cx/cy so the zoom handler can reposition it
+    // without scaling — markers always appear at fixed pixel size regardless of zoom level
+    const cityMarkerGroups = MAP_LOCATIONS.map(loc => {
       const [px, py] = projection([loc.lon, loc.lat]);
-      if (px < 0 || px > W_SVG || py < 0 || py > H_SVG) return '';
+      if (isNaN(px) || isNaN(py)) return '';
       const heroes = heroAtLocation[loc.name] || [];
       const hasHero = heroes.length > 0;
       const dotColor = hasHero ? '#e8b830' : '#4a2a60';
-      const dotR = hasHero ? 6 : 3.5;
-      const cityLabel = `<text x="${px}" y="${py - 9}" text-anchor="middle"
+      const dotR = hasHero ? 5.5 : 3;
+
+      // City name label
+      const cityLabel = `<text y="-10" text-anchor="middle"
         font-size="9.5" fill="${hasHero ? '#e8d8f8' : '#6a4888'}"
-        font-family="Courier New" letter-spacing="0.5">${loc.name}</text>`;
+        font-family="Courier New" letter-spacing="0.5" pointer-events="none">${loc.name}</text>`;
+
+      // Hero labels — each is a clickable <a> group
       const heroLabels = heroes.map((h, i) => {
         const stateColor = h.state === 'hunt' ? '#e05555' : h.state === 'wounded' ? '#cc8822' : h.state === 'flee' ? '#55aaee' : '#66bb77';
         const icon = h.state === 'hunt' ? '⚔' : h.state === 'wounded' ? '✞' : h.state === 'flee' ? '↪' : '◈';
         const slug = slugify(h.name);
-        return `<text x="${px}" y="${py + 20 + i * 14}" text-anchor="middle"
-          font-size="9" fill="${stateColor}" font-family="Courier New"
-          style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;"
-          onclick="window.open('/hero?name=${slug}','_blank')">${icon} ${h.name}</text>`;
+        return `<text y="${18 + i * 15}" text-anchor="middle"
+          font-size="10" fill="${stateColor}" font-family="Courier New"
+          style="cursor:pointer;" data-hero-slug="${slug}">${icon} ${h.name}</text>`;
       }).join('');
-      return `
-        <circle cx="${px}" cy="${py}" r="${dotR}" fill="${dotColor}" opacity="0.9"/>
-        ${hasHero ? `<circle cx="${px}" cy="${py}" r="${dotR + 5}" fill="none" stroke="${dotColor}" stroke-width="0.8" opacity="0.35"/>` : ''}
+
+      // Dot (also clickable if city has a single hero)
+      const dotClick = heroes.length === 1 ? `style="cursor:pointer;" data-hero-slug="${slugify(heroes[0].name)}"` : '';
+
+      return `<g class="map-city-marker" data-cx="${px}" data-cy="${py}" transform="translate(${px},${py})">
+        <circle r="${dotR}" fill="${dotColor}" opacity="0.9" ${dotClick}/>
+        ${hasHero ? `<circle r="${dotR + 5}" fill="none" stroke="${dotColor}" stroke-width="0.8" opacity="0.35"/>` : ''}
         ${cityLabel}
-        ${heroLabels}`;
+        ${heroLabels}
+      </g>`;
     }).join('');
 
-    // Compass rose (bottom-right)
+    // Compass rose (bottom-right, fixed — outside zoom layer)
     const CR = { x: W_SVG - 36, y: H_SVG - 36 };
     const compassRose = `
-      <g opacity="0.4">
+      <g opacity="0.4" pointer-events="none">
         <line x1="${CR.x}" y1="${CR.y-14}" x2="${CR.x}" y2="${CR.y+14}" stroke="#6a4888" stroke-width="0.8"/>
         <line x1="${CR.x-14}" y1="${CR.y}" x2="${CR.x+14}" y2="${CR.y}" stroke="#6a4888" stroke-width="0.8"/>
         <text x="${CR.x}" y="${CR.y-17}" text-anchor="middle" font-size="8" fill="#6a4888" font-family="Courier New">N</text>
       </g>`;
 
-    // Zoom hint
-    const zoomHint = `<text x="10" y="16" font-size="8" fill="#3a1a50" font-family="Courier New" letter-spacing="1">scroll to zoom · drag to pan</text>`;
+    const zoomHint = `<text x="10" y="16" font-size="8" fill="#3a1a50" font-family="Courier New" letter-spacing="1" pointer-events="none">scroll to zoom · drag to pan · dbl-click to reset</text>`;
 
     wrap.innerHTML = `
       <svg id="map-svg" viewBox="0 0 ${W_SVG} ${H_SVG}" xmlns="http://www.w3.org/2000/svg"
            style="width:100%;height:auto;display:block;background:#06000a;border:1px solid #2a1040;cursor:grab;">
-        <defs>
-          <filter id="map-glow">
-            <feGaussianBlur stdDeviation="2" result="blur"/>
-            <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-          </filter>
-        </defs>
-        <g id="map-zoom-layer">
+        <!-- Geography layer: scales with zoom -->
+        <g id="map-geo-layer">
           ${gridLines.join('')}
           ${landPath}
           ${riverPaths}
           ${mountainSvg}
-          ${cityDots}
         </g>
+        <!-- Overlay layer: repositioned but NOT scaled — markers stay fixed-size -->
+        <g id="map-overlay-layer">
+          ${cityMarkerGroups}
+        </g>
+        <!-- Fixed UI elements -->
         ${compassRose}
         ${zoomHint}
-        <text x="10" y="${H_SVG - 10}" font-size="9" fill="#3a1a50" font-family="Courier New" letter-spacing="2">GOTHIC RPG — WORLD MAP</text>
+        <text x="10" y="${H_SVG - 10}" font-size="9" fill="#3a1a50" font-family="Courier New" letter-spacing="2" pointer-events="none">GOTHIC RPG — WORLD MAP</text>
       </svg>`;
 
+    // ── Click delegation for hero labels + dots ─────────────
+    document.getElementById('map-overlay-layer').addEventListener('click', (e) => {
+      const slug = e.target.dataset.heroSlug;
+      if (slug) window.open(`/hero?name=${slug}`, '_blank');
+    });
+
     // ── D3 zoom behaviour ───────────────────────────────────
-    const svgEl = document.getElementById('map-svg');
-    const zoomLayer = document.getElementById('map-zoom-layer');
+    const svgEl  = document.getElementById('map-svg');
+    const geoLayer = document.getElementById('map-geo-layer');
+    const markers  = document.querySelectorAll('#map-overlay-layer .map-city-marker');
+
     const zoom = d3.zoom()
-      .scaleExtent([0.5, 12])
+      .scaleExtent([0.5, 14])
       .on('zoom', (event) => {
         const { x, y, k } = event.transform;
-        zoomLayer.setAttribute('transform', `translate(${x},${y}) scale(${k})`);
+
+        // Scale geography (land, rivers, grid)
+        geoLayer.setAttribute('transform', `translate(${x},${y}) scale(${k})`);
+
+        // Reposition each marker without scaling it
+        markers.forEach(g => {
+          const cx = parseFloat(g.dataset.cx);
+          const cy = parseFloat(g.dataset.cy);
+          // Screen position = zoom_origin + projected_point * scale
+          const sx = x + cx * k;
+          const sy = y + cy * k;
+          g.setAttribute('transform', `translate(${sx},${sy})`);
+        });
+
         svgEl.style.cursor = event.sourceEvent?.buttons ? 'grabbing' : 'grab';
       });
+
     d3.select(svgEl).call(zoom);
+
     // Double-click resets zoom
-    svgEl.addEventListener('dblclick', () => {
+    svgEl.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
       d3.select(svgEl).transition().duration(400).call(zoom.transform, d3.zoomIdentity);
     });
   }
