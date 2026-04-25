@@ -382,7 +382,8 @@
     #map-modal.open { display: flex; }
     #map-inner {
       background: #080010; border: 1px solid var(--purple-dim);
-      padding: 20px; max-width: 820px; width: 96%; position: relative;
+      padding: 20px; max-width: 860px; width: 96%; position: relative;
+      max-height: 90vh; overflow-y: auto;
     }
     #map-title {
       font-size: 11px; letter-spacing: 3px; color: var(--purple); text-transform: uppercase;
@@ -1354,26 +1355,60 @@
   document.getElementById('join-answer').addEventListener('keydown', e => { if (e.key === 'Enter') submitJoin(); });
 
   // ─────────────────────────────────────────────────────────
-  //  Map
+  //  Map  (D3 + Natural Earth real geography)
   // ─────────────────────────────────────────────────────────
+
+  // Real lat/lon for each hero city (Natural Earth major cities)
   const MAP_LOCATIONS = [
-    { name:'Kyoto',     x:220, y:310 },
-    { name:'Tokyo',     x:320, y:260 },
-    { name:'Osaka',     x:210, y:330 },
-    { name:'Sapporo',   x:360, y:100 },
-    { name:'Nagasaki',  x:100, y:380 },
-    { name:'Hiroshima', x:160, y:340 },
-    { name:'Sendai',    x:340, y:210 },
-    { name:'Nara',      x:215, y:320 },
-    { name:'Fukuoka',   x:115, y:370 },
-    { name:'Kanazawa',  x:240, y:270 },
+    { name:'Tokyo',     lon:139.6917, lat:35.6895 },
+    { name:'Kyoto',     lon:135.7681, lat:35.0116 },
+    { name:'Osaka',     lon:135.5023, lat:34.6937 },
+    { name:'Sapporo',   lon:141.3544, lat:43.0618 },
+    { name:'Nagasaki',  lon:129.8778, lat:32.7503 },
+    { name:'Hiroshima', lon:132.4596, lat:34.3853 },
+    { name:'Sendai',    lon:140.8694, lat:38.2682 },
+    { name:'Nara',      lon:135.8048, lat:34.6851 },
+    { name:'Fukuoka',   lon:130.4017, lat:33.5904 },
+    { name:'Kanazawa',  lon:136.6256, lat:36.5944 },
   ];
 
-  // Assign heroes to locations deterministically by hero name
+  // Assign heroes to cities deterministically by hero name hash
   function heroLocation(heroName) {
     let hash = 0;
     for (let i = 0; i < heroName.length; i++) hash = (hash * 31 + heroName.charCodeAt(i)) & 0xffff;
     return MAP_LOCATIONS[hash % MAP_LOCATIONS.length];
+  }
+
+  // D3 + topojson lazy-loaded once
+  let _d3 = null, _topojson = null, _japanGeo = null, _riversGeo = null;
+
+  async function loadMapLibs() {
+    if (_d3) return; // already loaded
+    // Load D3 and topojson-client as ES modules
+    const [d3mod, topomod] = await Promise.all([
+      import('https://cdn.jsdelivr.net/npm/d3@7/+esm'),
+      import('https://cdn.jsdelivr.net/npm/topojson-client@3/+esm'),
+    ]);
+    _d3 = d3mod;
+    _topojson = topomod;
+
+    // Fetch Natural Earth data
+    const [worldTopo, riversTopo] = await Promise.all([
+      fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(r => r.json()),
+      fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/rivers-110m.json').then(r => r.json()).catch(() => null),
+    ]);
+
+    // Japan = ISO 3166 numeric 392
+    _japanGeo = _topojson.feature(worldTopo, worldTopo.objects.countries);
+    _japanGeo = {
+      type: 'FeatureCollection',
+      features: _japanGeo.features.filter(f => f.id === '392')
+    };
+
+    if (riversTopo && riversTopo.objects) {
+      const riverKey = Object.keys(riversTopo.objects)[0];
+      _riversGeo = _topojson.feature(riversTopo, riversTopo.objects[riverKey]);
+    }
   }
 
   function openMap() {
@@ -1382,84 +1417,141 @@
     renderMap();
   }
 
-  function renderMap() {
+  async function renderMap() {
     const wrap = document.getElementById('map-svg-wrap');
     if (!wrap) return;
+
+    // Show loading state
+    wrap.innerHTML = `<div style="color:#6a4888;font-size:11px;letter-spacing:2px;padding:40px;text-align:center;">Loading map data...</div>`;
+
+    try {
+      await loadMapLibs();
+    } catch(err) {
+      wrap.innerHTML = `<div style="color:#cc4444;font-size:11px;letter-spacing:2px;padding:40px;text-align:center;">Map failed to load. Check connection.<br><small style="opacity:0.6">${err.message}</small></div>`;
+      return;
+    }
+
+    const d3 = _d3;
     const W_SVG = 760, H_SVG = 500;
 
-    // Build hero→location assignment
+    // Mercator projection centered on Japan
+    const projection = d3.geoMercator()
+      .center([137, 37])       // center of Japan (lon, lat)
+      .scale(1800)
+      .translate([W_SVG / 2, H_SVG / 2]);
+
+    const path = d3.geoPath().projection(projection);
+
+    // ── Build SVG string ──────────────────────────────────
+
+    // Grid overlay (RPG overworld feel)
+    const gridLines = [];
+    for (let x = 0; x <= W_SVG; x += 40) gridLines.push(`<line x1="${x}" y1="0" x2="${x}" y2="${H_SVG}" stroke="#130a20" stroke-width="0.5"/>`);
+    for (let y = 0; y <= H_SVG; y += 40) gridLines.push(`<line x1="0" y1="${y}" x2="${W_SVG}" y2="${y}" stroke="#130a20" stroke-width="0.5"/>`);
+
+    // Japan land path
+    let landPath = '';
+    if (_japanGeo && _japanGeo.features.length) {
+      const d = path(_japanGeo);
+      if (d) {
+        landPath = `<path d="${d}" fill="#1c0d2e" stroke="#4a2060" stroke-width="1.2" opacity="0.95"/>`;
+      }
+    }
+
+    // Rivers clipped to Japan bounding box
+    let riverPaths = '';
+    if (_riversGeo) {
+      // Rough Japan bounding box lon/lat: 123-146E, 24-46N
+      const japanBbox = [[123,24],[146,46]];
+      const clipped = { type:'FeatureCollection', features: _riversGeo.features.filter(f => {
+        try {
+          // Quick bbox check on first coordinate
+          const coords = f.geometry.coordinates;
+          if (!coords || !coords.length) return false;
+          const [lon, lat] = Array.isArray(coords[0]) ? coords[0] : coords;
+          return lon >= japanBbox[0][0] && lon <= japanBbox[1][0] && lat >= japanBbox[0][1] && lat <= japanBbox[1][1];
+        } catch { return false; }
+      })};
+      if (clipped.features.length) {
+        const d = path(clipped);
+        if (d) riverPaths = `<path d="${d}" fill="none" stroke="#1e3a5f" stroke-width="1.2" opacity="0.7"/>`;
+      }
+    }
+
+    // Mountain markers — hardcoded major peaks
+    const MOUNTAINS = [
+      { name:'Mt. Fuji',    lon:138.7274, lat:35.3606 },
+      { name:'Mt. Hotaka',  lon:137.6478, lat:36.2891 },
+      { name:'Mt. Yari',    lon:137.6478, lat:36.3417 },
+      { name:'Mt. Daisetsu',lon:142.8614, lat:43.6667 },
+      { name:'Mt. Kurodake',lon:142.9058, lat:43.7039 },
+    ];
+    const mountainSvg = MOUNTAINS.map(m => {
+      const [px, py] = projection([m.lon, m.lat]);
+      if (px < 0 || px > W_SVG || py < 0 || py > H_SVG) return '';
+      return `
+        <polygon points="${px},${py-10} ${px-7},${py+4} ${px+7},${py+4}"
+          fill="none" stroke="#5a3070" stroke-width="1.2" opacity="0.8"/>
+        <text x="${px}" y="${py+16}" text-anchor="middle"
+          font-size="8" fill="#5a3070" font-family="Courier New" opacity="0.8">${m.name}</text>`;
+    }).join('');
+
+    // Hero city dots
     const heroAtLocation = {};
-    (W.heroes || []).forEach(h => {
+    (W ? W.heroes || [] : []).forEach(h => {
       const loc = heroLocation(h.name);
       if (!heroAtLocation[loc.name]) heroAtLocation[loc.name] = [];
       heroAtLocation[loc.name].push(h);
     });
 
-    // Location dots + labels
-    const locationDots = MAP_LOCATIONS.map(loc => {
+    const cityDots = MAP_LOCATIONS.map(loc => {
+      const [px, py] = projection([loc.lon, loc.lat]);
+      if (px < 0 || px > W_SVG || py < 0 || py > H_SVG) return '';
       const heroes = heroAtLocation[loc.name] || [];
       const hasHero = heroes.length > 0;
       const dotColor = hasHero ? '#e8b830' : '#4a2a60';
-      const dotR     = hasHero ? 7 : 4;
-      const heroLabels = heroes.map((h,i) => {
-        const stateColor = h.state === 'hunt' ? '#e05555' : h.state === 'wounded' ? '#cc8822' : '#66bb77';
-        return `<text x="${loc.x}" y="${loc.y + 26 + i*14}" text-anchor="middle"
-          font-size="9" fill="${stateColor}" font-family="Courier New" letter-spacing="0.5">
-          ⚔ ${h.name.split(' ')[0]}
-        </text>`;
+      const dotR = hasHero ? 6 : 3.5;
+      const cityLabel = `<text x="${px}" y="${py - 9}" text-anchor="middle"
+        font-size="9.5" fill="${hasHero ? '#e8d8f8' : '#6a4888'}"
+        font-family="Courier New" letter-spacing="0.5">${loc.name}</text>`;
+      const heroLabels = heroes.map((h, i) => {
+        const stateColor = h.state === 'hunt' ? '#e05555' : h.state === 'wounded' ? '#cc8822' : h.state === 'flee' ? '#55aaee' : '#66bb77';
+        const icon = h.state === 'hunt' ? '⚔' : h.state === 'wounded' ? '✞' : h.state === 'flee' ? '↪' : '◈';
+        return `<text x="${px}" y="${py + 20 + i * 13}" text-anchor="middle"
+          font-size="8.5" fill="${stateColor}" font-family="Courier New">${icon} ${h.name.split(' ')[0]}</text>`;
       }).join('');
       return `
-        <circle cx="${loc.x}" cy="${loc.y}" r="${dotR}" fill="${dotColor}" opacity="0.9"/>
-        ${hasHero ? `<circle cx="${loc.x}" cy="${loc.y}" r="${dotR+4}" fill="none" stroke="${dotColor}" stroke-width="1" opacity="0.4"/>` : ''}
-        <text x="${loc.x}" y="${loc.y - 10}" text-anchor="middle"
-          font-size="10" fill="${hasHero ? '#e8d8f8' : '#6a4888'}"
-          font-family="Courier New" letter-spacing="1">${loc.name}</text>
-        ${heroLabels}
-      `;
+        <circle cx="${px}" cy="${py}" r="${dotR}" fill="${dotColor}" opacity="0.9"/>
+        ${hasHero ? `<circle cx="${px}" cy="${py}" r="${dotR + 5}" fill="none" stroke="${dotColor}" stroke-width="0.8" opacity="0.35"/>` : ''}
+        ${cityLabel}
+        ${heroLabels}`;
     }).join('');
 
-    // Japan silhouette paths (simplified overworld style)
-    const islandPaths = `
-      <!-- Honshu main -->
-      <path d="M130,200 Q150,180 180,170 Q220,155 260,150 Q300,145 340,155 Q370,162 390,175
-               Q410,188 420,205 Q415,225 400,240 Q380,258 360,268 Q330,280 300,288
-               Q270,295 240,300 Q215,305 200,315 Q185,328 175,345 Q165,358 150,360
-               Q135,355 128,340 Q120,320 122,300 Q124,275 128,255 Q130,230 130,200Z"
-        fill="#1a0a2a" stroke="#3a1a50" stroke-width="1.5" opacity="0.85"/>
-      <!-- Kyushu -->
-      <path d="M100,345 Q110,335 125,335 Q135,340 140,355 Q142,370 132,382
-               Q120,390 108,386 Q96,378 95,365 Q95,355 100,345Z"
-        fill="#1a0a2a" stroke="#3a1a50" stroke-width="1.5" opacity="0.85"/>
-      <!-- Shikoku -->
-      <path d="M170,358 Q185,350 200,352 Q215,356 218,368 Q215,380 200,384
-               Q185,385 175,378 Q168,370 170,358Z"
-        fill="#1a0a2a" stroke="#3a1a50" stroke-width="1.5" opacity="0.85"/>
-      <!-- Hokkaido -->
-      <path d="M300,70 Q320,60 350,65 Q375,70 390,85 Q400,100 395,118
-               Q385,132 365,138 Q345,142 325,135 Q305,126 298,110
-               Q292,94 300,70Z"
-        fill="#1a0a2a" stroke="#3a1a50" stroke-width="1.5" opacity="0.85"/>
-    `;
-
-    // Grid overlay (RPG overworld feel)
-    const gridLines = [];
-    for (let x = 0; x <= W_SVG; x += 40) gridLines.push(`<line x1="${x}" y1="0" x2="${x}" y2="${H_SVG}" stroke="#1a0828" stroke-width="0.5"/>`);
-    for (let y = 0; y <= H_SVG; y += 40) gridLines.push(`<line x1="0" y1="${y}" x2="${W_SVG}" y2="${y}" stroke="#1a0828" stroke-width="0.5"/>`);
+    // Compass rose (bottom-right)
+    const CR = { x: W_SVG - 36, y: H_SVG - 36 };
+    const compassRose = `
+      <g opacity="0.4">
+        <line x1="${CR.x}" y1="${CR.y-14}" x2="${CR.x}" y2="${CR.y+14}" stroke="#6a4888" stroke-width="0.8"/>
+        <line x1="${CR.x-14}" y1="${CR.y}" x2="${CR.x+14}" y2="${CR.y}" stroke="#6a4888" stroke-width="0.8"/>
+        <text x="${CR.x}" y="${CR.y-17}" text-anchor="middle" font-size="8" fill="#6a4888" font-family="Courier New">N</text>
+      </g>`;
 
     wrap.innerHTML = `
       <svg viewBox="0 0 ${W_SVG} ${H_SVG}" xmlns="http://www.w3.org/2000/svg"
            style="width:100%;height:auto;display:block;background:#06000a;border:1px solid #2a1040;">
-        <!-- Grid -->
+        <defs>
+          <filter id="map-glow">
+            <feGaussianBlur stdDeviation="2" result="blur"/>
+            <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+          </filter>
+        </defs>
         ${gridLines.join('')}
-        <!-- Sea texture dots -->
-        <filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
-        <rect width="${W_SVG}" height="${H_SVG}" filter="url(#noise)" opacity="0.03" fill="#4466aa"/>
-        <!-- Islands -->
-        ${islandPaths}
-        <!-- Locations + Heroes -->
-        ${locationDots}
-        <!-- Title watermark -->
-        <text x="10" y="${H_SVG-10}" font-size="9" fill="#3a1a50" font-family="Courier New" letter-spacing="2">GOTHIC RPG — WORLD MAP</text>
+        ${landPath}
+        ${riverPaths}
+        ${mountainSvg}
+        ${cityDots}
+        ${compassRose}
+        <text x="10" y="${H_SVG - 10}" font-size="9" fill="#3a1a50" font-family="Courier New" letter-spacing="2">GOTHIC RPG — WORLD MAP</text>
       </svg>`;
   }
 
