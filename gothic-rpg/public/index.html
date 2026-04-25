@@ -95,6 +95,13 @@
     #controls button.active { background: #2e1050; color: var(--text-hi); border-color: var(--purple-dim); }
     #controls button.danger { border-color: #501010; color: #aa3333; }
     #controls button.danger:hover { background: #1e0808; color: var(--red); }
+    #my-hero-link {
+      font-family: 'Courier New', monospace; font-size: 11px; letter-spacing: 1px;
+      color: var(--gold); border: 1px solid #5a3a10; background: #100800;
+      padding: 5px 14px; text-decoration: none; white-space: nowrap;
+      transition: background 0.12s, color 0.12s;
+    }
+    #my-hero-link:hover { background: #1e1000; color: #f0cc60; border-color: #8a5a20; }
 
     #save-status {
       font-size: 10px;
@@ -717,6 +724,7 @@
       <button id="btn-pause" title="Pause your view — world keeps running">&#9646;&#9646; Pause View</button>
       <button id="btn-map" style="border-color:#1a3050;color:#5599cc;">◉ Map</button>
       <button id="btn-join" style="border-color:#3a6a20;color:#66bb77;">⚔ Join the World</button>
+      <a id="my-hero-link" style="display:none;" href="#" target="_blank"></a>
       <span id="save-status">loading...</span>
       <span id="viewer-count" style="font-size:10px;color:var(--text-lo);letter-spacing:1px;margin-left:6px;"></span>
     </div>
@@ -1449,7 +1457,7 @@
       if (data.ok && data.heroName) {
         if (data.claimToken) {
           setClaim(data.heroName, data.claimToken);
-          document.getElementById('btn-join').style.display = 'none';
+          syncHeroHeaderLink();
         }
         showJoinToast(data.heroName, !!data.claimToken);
       }
@@ -1477,9 +1485,9 @@
     });
     const data = await res.json();
     if (res.ok && data.ok) {
-      // Update the stored claim with the new name
       setClaim(data.heroName, claim.claimToken);
       selectedHeroName = data.heroName;
+      syncHeroHeaderLink();
       if (msgEl) { msgEl.textContent = `Renamed to ${data.heroName} ✓`; msgEl.className = 'owner-msg show'; setTimeout(() => msgEl.classList.remove('show'), 2500); }
     } else {
       if (msgEl) { msgEl.textContent = data.error || 'Rename failed.'; msgEl.className = 'owner-msg show error'; setTimeout(() => { msgEl.classList.remove('show','error'); }, 2500); }
@@ -1512,7 +1520,7 @@
     if (res.ok) {
       clearClaim();
       closeHeroDetail();
-      document.getElementById('btn-join').style.display = '';
+      syncHeroHeaderLink();
       const t = document.getElementById('join-toast');
       t.textContent = `${heroName} has retired. Their legend endures.`;
       t.style.display = 'block';
@@ -1794,17 +1802,23 @@
   // ─────────────────────────────────────────────────────────
   //  Boot
   // ─────────────────────────────────────────────────────────
-  // Hide "Join the World" if user already has a hero
-  (function updateJoinBtn() {
-    const btn = document.getElementById('btn-join');
-    if (!btn) return;
-    const claim = getClaim();
+  // Show "Your Hero" link or "Join" button depending on claim state
+  function syncHeroHeaderLink() {
+    const claim   = getClaim();
+    const btn     = document.getElementById('btn-join');
+    const link    = document.getElementById('my-hero-link');
+    if (!btn || !link) return;
     if (claim) {
-      btn.style.display = 'none';
+      btn.style.display  = 'none';
+      link.style.display = '';
+      link.textContent   = `★ ${claim.heroName}`;
+      link.href          = `/hero?name=${slugify(claim.heroName)}`;
     } else {
-      btn.style.display = '';
+      btn.style.display  = '';
+      link.style.display = 'none';
     }
-  })();
+  }
+  syncHeroHeaderLink();
 
   setSaveStatus('connecting...');
   connectSSE();
