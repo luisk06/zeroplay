@@ -724,7 +724,7 @@
       <button id="btn-pause" title="Pause your view — world keeps running">&#9646;&#9646; Pause View</button>
       <button id="btn-map" style="border-color:#1a3050;color:#5599cc;">◉ Map</button>
       <button id="btn-join" style="border-color:#3a6a20;color:#66bb77;">⚔ Join the World</button>
-      <a id="my-hero-link" style="display:none;" href="#" target="_blank"></a>
+      <a id="my-hero-link" style="display:none;" href="#"></a>
       <span id="save-status">loading...</span>
       <span id="viewer-count" style="font-size:10px;color:var(--text-lo);letter-spacing:1px;margin-left:6px;"></span>
     </div>
@@ -987,7 +987,7 @@
             <div class="stat-chip"><span class="val">${h.kills}</span><span class="lbl">Kills</span></div>
             <div class="stat-chip"><span class="val" style="${(h.falls||0)>0?'color:#cc8822;':''}">${h.falls||0}</span><span class="lbl">Falls</span></div>
           </div>
-          <a class="btn-view-hero" href="${heroUrl}" target="_blank" onclick="event.stopPropagation()">◈ View Hero Page</a>
+          <a class="btn-view-hero" href="${heroUrl}" onclick="event.stopPropagation()">◈ View Hero Page</a>
         </div>
       </div>`;
     }).join('');
@@ -1761,7 +1761,7 @@
     // ── Click delegation for hero labels + dots ─────────────
     document.getElementById('map-overlay-layer').addEventListener('click', (e) => {
       const slug = e.target.dataset.heroSlug;
-      if (slug) window.open(`/hero?name=${slug}`, '_blank');
+      if (slug) location.href = `/hero?name=${slug}`;
     });
 
     // ── D3 zoom behaviour ───────────────────────────────────

@@ -70,7 +70,9 @@
       font-family: 'Courier New', monospace; font-size: 11px; padding: 6px 18px;
       cursor: pointer; letter-spacing: 1px; text-transform: uppercase; transition: background 0.12s;
     }
-    .btn:hover { background: #200030; color: var(--text-hi); }
+    .btn:hover  { background: #200030; color: var(--text-hi); }
+    .btn.active { background: #2a0848; color: var(--text-hi); border-color: var(--purple-dim); }
+    .btn[data-pause].active { background: #2a1000; border-color: #cc8822; color: #cc8822; }
     .btn.save { border-color: var(--purple-dim); color: var(--purple); }
     .btn.save:hover { background: #1a0830; }
     .btn.danger { border-color: #501010; color: #aa3333; }
@@ -101,10 +103,10 @@
 
   <div class="section-title">World Controls</div>
   <div class="world-controls">
-    <button class="btn" onclick="setSpeed(1)">1× Speed</button>
-    <button class="btn" onclick="setSpeed(2)">2× Speed</button>
-    <button class="btn" onclick="setSpeed(4)">4× Speed</button>
-    <button class="btn" onclick="togglePause()">⏸ Pause / Resume</button>
+    <button class="btn" data-speed="1" onclick="setSpeed(1)">1× Speed</button>
+    <button class="btn" data-speed="2" onclick="setSpeed(2)">2× Speed</button>
+    <button class="btn" data-speed="4" onclick="setSpeed(4)">4× Speed</button>
+    <button class="btn" data-pause="1" onclick="togglePause()">⏸ Pause</button>
     <button class="btn danger" onclick="confirmReset()">⟳ Reset World</button>
   </div>
 
@@ -138,6 +140,17 @@
     document.getElementById('st-viewers').textContent = W.viewers || 0;
     document.getElementById('st-speed').textContent   = W.paused ? '—' : W.speed + '×';
     document.getElementById('st-paused').style.display = W.paused ? '' : 'none';
+
+    // Reflect active speed button
+    document.querySelectorAll('.world-controls .btn[data-speed]').forEach(b => {
+      b.classList.toggle('active', !W.paused && parseInt(b.dataset.speed) === W.speed);
+    });
+    // Reflect pause state
+    const pauseBtn = document.querySelector('.world-controls .btn[data-pause]');
+    if (pauseBtn) {
+      pauseBtn.classList.toggle('active', !!W.paused);
+      pauseBtn.textContent = W.paused ? '▶ Resume' : '⏸ Pause';
+    }
 
     const list = document.getElementById('hero-list');
     // Preserve existing inputs (don't wipe while user is typing)
