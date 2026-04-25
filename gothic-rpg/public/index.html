@@ -110,6 +110,103 @@
       letter-spacing: 1px;
     }
 
+    /* ── Pulse strip ── */
+    #pulse-strip {
+      display: flex; gap: 0; border-bottom: 1px solid var(--border2);
+      background: #080010; overflow-x: auto;
+    }
+    .pulse-stat {
+      flex: 1; min-width: 100px; padding: 10px 18px;
+      border-right: 1px solid var(--border2); text-align: center;
+    }
+    .pulse-stat:last-child { border-right: none; }
+    .pulse-val { font-size: 18px; color: var(--text-hi); display: block; line-height: 1.2; }
+    .pulse-lbl { font-size: 9px; color: var(--text-lo); letter-spacing: 2px; text-transform: uppercase; }
+
+    /* ── Pinned hero banner ── */
+    #my-hero-banner {
+      display: none;
+      align-items: center; gap: 16px;
+      padding: 12px 20px; background: #0b0010;
+      border-bottom: 1px solid #3a1a50;
+      text-decoration: none; color: inherit;
+      transition: background 0.15s;
+    }
+    #my-hero-banner:hover { background: #110018; }
+    #my-hero-banner.visible { display: flex; }
+    .banner-portrait {
+      width: 48px; height: 48px; object-fit: cover; object-position: top;
+      border: 1px solid #4a2060; flex-shrink: 0;
+      filter: brightness(0.9);
+    }
+    .banner-info { flex: 1; min-width: 0; }
+    .banner-name { font-size: 15px; color: var(--text-hi); letter-spacing: 1px; margin-bottom: 3px; }
+    .banner-meta { font-size: 11px; color: var(--text-lo); letter-spacing: 1px; }
+    .banner-state { font-size: 10px; letter-spacing: 1px; padding: 2px 8px; border: 1px solid; display: inline-block; margin-left: 8px; }
+    .banner-hp-track { height: 3px; background: #1a0828; margin-top: 5px; width: 160px; }
+    .banner-hp-fill  { height: 100%; transition: width 0.4s; }
+    .banner-cta { font-size: 10px; color: var(--gold); letter-spacing: 2px; text-transform: uppercase; white-space: nowrap; border: 1px solid #5a3a10; padding: 5px 12px; }
+
+    /* ── Main content: 2-col ── */
+    #main-content {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 0;
+      border-bottom: 1px solid var(--border2);
+    }
+    @media (max-width: 700px) { #main-content { grid-template-columns: 1fr; } }
+
+    #feed-section { padding: 16px 20px; border-right: 1px solid var(--border2); }
+    #leaderboard-section { padding: 16px 20px; }
+
+    /* Event feed */
+    .feed-entry {
+      display: flex; align-items: baseline; gap: 10px;
+      padding: 7px 0; border-bottom: 1px solid #0d000f;
+      font-size: 12px; line-height: 1.5;
+    }
+    .feed-entry:last-child { border-bottom: none; }
+    .feed-yr   { font-size: 10px; color: var(--text-lo); letter-spacing: 1px; flex-shrink: 0; min-width: 32px; }
+    .feed-icon { font-size: 13px; flex-shrink: 0; }
+    .feed-msg  { color: var(--text-mid); flex: 1; }
+    .feed-entry.combat .feed-msg { color: #e05555; }
+    .feed-entry.loot   .feed-msg { color: #d4aa44; }
+    .feed-entry.level  .feed-msg { color: #5599dd; }
+    .feed-entry.death  .feed-msg { color: #aa3344; }
+    .feed-entry.explore .feed-msg { color: #55aa66; }
+
+    /* Leaderboard */
+    .lb-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid #0d000f;
+      cursor: pointer; text-decoration: none; color: inherit;
+      transition: background 0.1s;
+    }
+    .lb-row:last-child { border-bottom: none; }
+    .lb-row:hover { background: #0e0014; }
+    .lb-rank  { font-size: 11px; color: var(--text-lo); width: 20px; text-align: right; flex-shrink: 0; }
+    .lb-port  { width: 32px; height: 32px; object-fit: cover; object-position: top; border: 1px solid var(--border2); flex-shrink: 0; filter: brightness(0.85); }
+    .lb-info  { flex: 1; min-width: 0; }
+    .lb-name  { font-size: 12px; color: var(--text-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lb-sub   { font-size: 10px; color: var(--text-lo); letter-spacing: 0.5px; }
+    .lb-kills { font-size: 13px; color: var(--text-mid); flex-shrink: 0; min-width: 36px; text-align: right; }
+    .lb-mine  { color: var(--gold) !important; }
+
+    /* ── Browse all heroes (collapsible) ── */
+    #browse-section { border-bottom: 1px solid var(--border2); }
+    #browse-toggle {
+      width: 100%; background: none; border: none; border-bottom: 1px solid var(--border2);
+      color: var(--text-lo); font-family: 'Courier New', monospace; font-size: 10px;
+      letter-spacing: 3px; text-transform: uppercase; padding: 10px 20px;
+      cursor: pointer; text-align: left; display: flex; align-items: center; gap: 8px;
+      transition: color 0.12s, background 0.12s;
+    }
+    #browse-toggle:hover { color: var(--text-mid); background: #0a0010; }
+    #browse-toggle .toggle-arrow { margin-left: auto; transition: transform 0.2s; }
+    #browse-toggle.open .toggle-arrow { transform: rotate(180deg); }
+    #browse-body { display: none; padding: 16px 20px; }
+    #browse-body.open { display: block; }
+
     /* ── Main layout: heroes full-width top, then 2-col bottom ── */
     #heroes-section {
       padding: 16px 20px;
@@ -730,17 +827,58 @@
     </div>
   </div>
 
-  <!-- Heroes row -->
-  <div id="heroes-section">
-    <div class="section-title">Heroes</div>
-    <div id="hero-search-wrap">
-      <input id="hero-search" type="text" placeholder="Search hero by name..." autocomplete="off">
-    </div>
-    <div id="heroes-grid"></div>
-    <div id="hero-detail"></div>
+  <!-- Pulse strip -->
+  <div id="pulse-strip">
+    <div class="pulse-stat"><span class="pulse-val" id="pulse-souls">—</span><span class="pulse-lbl">Souls</span></div>
+    <div class="pulse-stat"><span class="pulse-val" id="pulse-year">—</span><span class="pulse-lbl">Year</span></div>
+    <div class="pulse-stat"><span class="pulse-val" id="pulse-kills">—</span><span class="pulse-lbl">Total Kills</span></div>
+    <div class="pulse-stat"><span class="pulse-val" id="pulse-battles">—</span><span class="pulse-lbl">Battles</span></div>
+    <div class="pulse-stat"><span class="pulse-val" id="pulse-viewers">—</span><span class="pulse-lbl">Watching</span></div>
   </div>
 
-  <!-- Threats + Stats -->
+  <!-- Pinned hero banner (owner only) -->
+  <a id="my-hero-banner" href="#">
+    <img class="banner-portrait" id="banner-portrait" src="" alt="">
+    <div class="banner-info">
+      <div class="banner-name" id="banner-name">—</div>
+      <div class="banner-meta">
+        <span id="banner-rank">—</span>
+        <span class="banner-state" id="banner-state">—</span>
+      </div>
+      <div class="banner-hp-track"><div class="banner-hp-fill" id="banner-hp-fill"></div></div>
+    </div>
+    <div class="banner-cta">View Hero →</div>
+  </a>
+
+  <!-- Main content: event feed + leaderboard -->
+  <div id="main-content">
+    <div id="feed-section">
+      <div class="section-title">Recent Chronicles</div>
+      <div id="event-feed"></div>
+    </div>
+    <div id="leaderboard-section">
+      <div class="section-title">Top Heroes</div>
+      <div id="leaderboard"></div>
+    </div>
+  </div>
+
+  <!-- Browse all heroes (collapsible) -->
+  <div id="browse-section">
+    <button id="browse-toggle">
+      <span>Browse All Heroes</span>
+      <span id="browse-count" style="color:var(--text-lo);"></span>
+      <span class="toggle-arrow">▾</span>
+    </button>
+    <div id="browse-body">
+      <div id="hero-search-wrap">
+        <input id="hero-search" type="text" placeholder="Search hero by name..." autocomplete="off">
+      </div>
+      <div id="heroes-grid"></div>
+      <div id="hero-detail"></div>
+    </div>
+  </div>
+
+  <!-- Threats + Stats (kept for admin-style info, collapsed by default) -->
   <div id="bottom-row">
     <div id="threats-section">
       <div class="section-title">Active Threats</div>
@@ -750,12 +888,6 @@
       <div class="section-title">World Stats</div>
       <div id="stats-list"></div>
     </div>
-  </div>
-
-  <!-- Chronicle -->
-  <div id="log-section">
-    <div class="section-title">Chronicle</div>
-    <div id="log-lines"></div>
   </div>
 
 </div>
@@ -922,10 +1054,13 @@
 
   function renderAll() {
     processCombatEvents();
+    renderPulse();
+    renderBanner();
+    renderFeed();
+    renderLeaderboard();
     renderHeroes();
     renderThreats();
     renderStats();
-    renderLog();
     updateEra();
     if (selectedHeroName) {
       const h = W.heroes.find(h => h.name === selectedHeroName);
@@ -941,6 +1076,85 @@
         closeHeroDetail();
       }
     }
+  }
+
+  // ── Pulse strip ───────────────────────────────────────────
+  function renderPulse() {
+    const el = id => document.getElementById(id);
+    if (el('pulse-souls'))   el('pulse-souls').textContent   = W.heroes.length;
+    if (el('pulse-year'))    el('pulse-year').textContent    = W.year;
+    if (el('pulse-kills'))   el('pulse-kills').textContent   = W.totalKills || 0;
+    if (el('pulse-battles')) el('pulse-battles').textContent = W.totalBattles || 0;
+    if (el('pulse-viewers')) el('pulse-viewers').textContent = W.viewers || 0;
+    // Keep browse count label current
+    const browseCount = el('browse-count');
+    if (browseCount && W.heroes) browseCount.textContent = `(${W.heroes.length})`;
+  }
+
+  // ── Pinned hero banner ────────────────────────────────────
+  function renderBanner() {
+    const claim = getClaim();
+    const banner = document.getElementById('my-hero-banner');
+    if (!banner) return;
+    if (!claim) { banner.classList.remove('visible'); return; }
+    const h = W.heroes.find(h => h.name === claim.heroName);
+    if (!h) { banner.classList.remove('visible'); return; }
+    banner.classList.add('visible');
+    banner.href = `/hero?name=${slugify(h.name)}`;
+    const port = document.getElementById('banner-portrait');
+    if (port && h.image) port.src = h.image;
+    document.getElementById('banner-name').textContent = h.name + (h.isBlonde ? ' ★' : '');
+    const rank = getRank(h.level);
+    document.getElementById('banner-rank').textContent = `${rank.badge} ${rank.name} · Lv ${h.level}`;
+    const stateEl = document.getElementById('banner-state');
+    const stateLabel = h.state === 'hunt' ? '⚔ Hunting' : h.state === 'flee' ? '↪ Fleeing' : h.state === 'wounded' ? '✞ Wounded' : '◈ Exploring';
+    const stateColor = h.state === 'hunt' ? '#e05555' : h.state === 'flee' ? '#55aaee' : h.state === 'wounded' ? '#cc8822' : '#66bb77';
+    stateEl.textContent = stateLabel;
+    stateEl.style.color = stateColor;
+    stateEl.style.borderColor = stateColor + '55';
+    const pct = Math.max(0, h.hp / h.maxhp);
+    const fill = document.getElementById('banner-hp-fill');
+    if (fill) {
+      fill.style.width = Math.round(pct * 100) + '%';
+      fill.style.background = pct > 0.6 ? '#3a9a3a' : pct > 0.3 ? '#aaaa22' : '#aa2222';
+    }
+  }
+
+  // ── Event feed ────────────────────────────────────────────
+  function renderFeed() {
+    const el = document.getElementById('event-feed');
+    if (!el) return;
+    const log = (W.log || []).slice(0, 18);
+    if (!log.length) { el.innerHTML = `<div style="color:var(--text-lo);font-size:12px;">No events yet.</div>`; return; }
+    el.innerHTML = log.map(l => `
+      <div class="feed-entry ${l.type}">
+        <span class="feed-yr">Yr${l.t}</span>
+        <span class="feed-icon">${LOG_ICONS[l.type] || '◈'}</span>
+        <span class="feed-msg">${l.msg}</span>
+      </div>`).join('');
+  }
+
+  // ── Leaderboard ───────────────────────────────────────────
+  function renderLeaderboard() {
+    const el = document.getElementById('leaderboard');
+    if (!el) return;
+    const claim = getClaim();
+    const sorted = [...W.heroes].sort((a, b) => b.kills - a.kills || b.level - a.level).slice(0, 10);
+    if (!sorted.length) { el.innerHTML = `<div style="color:var(--text-lo);font-size:12px;">No heroes yet.</div>`; return; }
+    el.innerHTML = sorted.map((h, i) => {
+      const rank = getRank(h.level);
+      const mine = claim && claim.heroName === h.name;
+      const stateIcon = h.state === 'hunt' ? '⚔' : h.state === 'wounded' ? '✞' : h.state === 'flee' ? '↪' : '◈';
+      return `<a class="lb-row" href="/hero?name=${slugify(h.name)}">
+        <span class="lb-rank">${i + 1}</span>
+        ${h.image ? `<img class="lb-port" src="${h.image}" alt="${h.name}">` : ''}
+        <div class="lb-info">
+          <div class="lb-name ${mine ? 'lb-mine' : ''}">${mine ? '★ ' : ''}${h.name}</div>
+          <div class="lb-sub">${rank.badge} ${rank.name} · Lv ${h.level} · ${stateIcon}</div>
+        </div>
+        <span class="lb-kills" title="kills">${h.kills}⚔</span>
+      </a>`;
+    }).join('');
   }
 
   function renderHeroes() {
@@ -1798,6 +2012,19 @@
       d3.select(svgEl).transition().duration(400).call(zoom.transform, d3.zoomIdentity);
     });
   }
+
+  // ─────────────────────────────────────────────────────────
+  //  Browse section toggle
+  // ─────────────────────────────────────────────────────────
+  document.getElementById('browse-toggle').addEventListener('click', function() {
+    this.classList.toggle('open');
+    const body = document.getElementById('browse-body');
+    body.classList.toggle('open');
+    // Update count label each time the section opens
+    if (body.classList.contains('open') && W && W.heroes) {
+      document.getElementById('browse-count').textContent = `(${W.heroes.length})`;
+    }
+  });
 
   // ─────────────────────────────────────────────────────────
   //  Boot

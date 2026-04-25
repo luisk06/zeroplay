@@ -362,13 +362,20 @@ function tick() {
   if (W.tick % SAVE_INTERVAL_TICKS === 0) saveState(W).catch(() => {});
   if (W.tick % BROADCAST_INTERVAL_TICKS === 0) {
     const events = pendingCombatEvents.splice(0);
-    broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents: events });
-    // Push updates to each hero's dedicated viewers
+    // ── Optimization: serialize once, write the same string to all clients ──
+    const worldMsg = `data: ${JSON.stringify({ type:'state', world: liveSnapshotWithViewers(), combatEvents: events })}\n\n`;
+    for (const res of clients) {
+      try { res.write(worldMsg); } catch (e) { clients.delete(res); }
+    }
+    // Per-hero SSE: each hero serialized once for all its viewers
     for (const [heroName, set] of heroClients) {
       if (!set.size) continue;
       const hero = W.heroes.find(h => h.name === heroName);
       const heroEvents = events.filter(e => e.heroName === heroName);
-      broadcastHero(heroName, { type:'hero', hero: hero ? liveHero(hero) : null, viewers: set.size, world:{ year:W.year, era:era() }, combatEvents: heroEvents });
+      const heroMsg = `data: ${JSON.stringify({ type:'hero', hero: hero ? liveHero(hero) : null, viewers: set.size, world:{ year:W.year, era:era() }, combatEvents: heroEvents })}\n\n`;
+      for (const res of set) {
+        try { res.write(heroMsg); } catch (e) { set.delete(res); }
+      }
     }
   }
 }
