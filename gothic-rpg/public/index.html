@@ -214,6 +214,41 @@
       background: rgba(0,0,0,0.6); padding: 2px 6px; border: 1px solid #1a3060;
     }
 
+    /* ── Ownership badge ── */
+    .hero-card-mine {
+      position: absolute; top: 8px; left: 8px;
+      font-size: 9px; letter-spacing: 1px; color: #e8b830;
+      background: rgba(0,0,0,0.75); padding: 2px 7px;
+      border: 1px solid #6a4010;
+    }
+    /* Owner strip inside detail panel */
+    .owner-strip {
+      background: #0e0010; border: 1px solid #4a2060;
+      padding: 12px 14px; margin-bottom: 14px;
+    }
+    .owner-strip-title {
+      font-size: 9px; letter-spacing: 3px; color: var(--gold);
+      text-transform: uppercase; margin-bottom: 10px;
+    }
+    .owner-motto-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .owner-motto-input {
+      flex: 1; background: #080010; border: 1px solid #3a1a50;
+      color: var(--text-hi); font-family: 'Courier New', monospace;
+      font-size: 12px; padding: 6px 9px; outline: none;
+    }
+    .owner-motto-input:focus { border-color: var(--purple-dim); }
+    .owner-btn {
+      background: #150025; border: 1px solid var(--border); color: var(--text-mid);
+      font-family: 'Courier New', monospace; font-size: 10px; letter-spacing: 1px;
+      padding: 6px 14px; cursor: pointer; text-transform: uppercase;
+      transition: background 0.12s;
+    }
+    .owner-btn:hover { background: #200035; color: var(--text-hi); }
+    .owner-btn.retire { border-color: #5a1515; color: #aa3333; }
+    .owner-btn.retire:hover { background: #1e0808; color: var(--red); }
+    .owner-msg { font-size: 10px; color: var(--green); letter-spacing: 1px; min-height: 14px; margin-top: 4px; opacity: 0; transition: opacity 0.3s; }
+    .owner-msg.show { opacity: 1; }
+
     /* Card body */
     .hero-card-body { padding: 10px 12px 12px; }
 
@@ -859,6 +894,17 @@
   // Slug helpers — "Iron Wolf" → "iron-wolf"
   function slugify(name) { return name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''); }
 
+  // ── Hero ownership (localStorage claim token) ─────────────
+  const CLAIM_KEY = 'gothic-rpg-claim';
+  function getClaim() {
+    try { return JSON.parse(localStorage.getItem(CLAIM_KEY)) || null; } catch { return null; }
+  }
+  function setClaim(heroName, claimToken) {
+    localStorage.setItem(CLAIM_KEY, JSON.stringify({ heroName, claimToken, createdAt: Date.now() }));
+  }
+  function clearClaim() { localStorage.removeItem(CLAIM_KEY); }
+  function isMyHero(heroName) { const c = getClaim(); return c && c.heroName === heroName; }
+
   function renderAll() {
     processCombatEvents();
     renderHeroes();
@@ -913,6 +959,7 @@
               <span class="tag ${stateClass}">${stateLabel}</span>
             </div>
           </div>
+          ${isMyHero(h.name) ? `<div class="hero-card-mine">★ Your Hero</div>` : ''}
           ${viewers > 0 ? `<div class="hero-card-viewers">● ${viewers} watching</div>` : ''}
         </div>
         <div class="hero-card-body">
@@ -1016,6 +1063,18 @@
             </div>
           </div>
         </div>` : `<div class="patch-arena-section" style="display:none;"></div>`}
+
+        ${isMyHero(h.name) ? `
+        <div class="owner-strip" id="owner-strip">
+          <div class="owner-strip-title">★ Your Hero</div>
+          <div class="owner-motto-row">
+            <input class="owner-motto-input" id="owner-motto" type="text" maxlength="80"
+              placeholder="Set a motto for your hero…" value="${(h.motto||'').replace(/"/g,'&quot;')}">
+            <button class="owner-btn" onclick="saveMotto('${h.name.replace(/'/g,"\\'")}')">Save</button>
+          </div>
+          <div class="owner-msg" id="owner-msg"></div>
+          <button class="owner-btn retire" onclick="retireHero('${h.name.replace(/'/g,"\\'")}')">⚰ Retire Hero</button>
+        </div>` : ''}
 
         <div class="detail-body">
 
@@ -1338,16 +1397,61 @@
     try {
       const res  = await fetch('/api/join', { method:'POST', headers:{'Content-Type':'application/json'} });
       const data = await res.json();
-      if (data.ok && data.heroName) showJoinToast(data.heroName);
+      if (!res.ok) {
+        document.getElementById('join-error').textContent = data.error || 'Could not join.';
+        document.getElementById('join-modal').style.display = 'flex';
+        return;
+      }
+      if (data.ok && data.heroName) {
+        // Store ownership claim immediately
+        if (data.claimToken) setClaim(data.heroName, data.claimToken);
+        showJoinToast(data.heroName, !!data.claimToken);
+      }
     } catch(e) { /* silent */ }
   }
 
-  function showJoinToast(name) {
+  function showJoinToast(name, owned) {
     const t = document.getElementById('join-toast');
-    t.textContent = `⚔ ${name} has entered the world!`;
+    t.innerHTML = owned
+      ? `⚔ <strong>${name}</strong> has entered the world!<br><span style="font-size:10px;opacity:0.7;letter-spacing:0.5px;">★ You are their keeper. Find them in the world.</span>`
+      : `⚔ ${name} has entered the world!`;
     t.style.display = 'block';
-    setTimeout(() => { t.style.display = 'none'; }, 4000);
+    setTimeout(() => { t.style.display = 'none'; }, 5000);
   }
+
+  // ── Owner actions ─────────────────────────────────────────
+  window.saveMotto = async function(heroName) {
+    const claim = getClaim();
+    if (!claim || claim.heroName !== heroName) return;
+    const motto = (document.getElementById('owner-motto')?.value || '').trim();
+    const res = await fetch('/api/hero/motto', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ heroName, claimToken: claim.claimToken, motto })
+    });
+    const msgEl = document.getElementById('owner-msg');
+    if (res.ok && msgEl) {
+      msgEl.textContent = 'Motto saved ✓'; msgEl.classList.add('show');
+      setTimeout(() => msgEl.classList.remove('show'), 2200);
+    }
+  };
+
+  window.retireHero = async function(heroName) {
+    if (!confirm(`Are you sure you want to retire ${heroName}? They will leave the world permanently.`)) return;
+    const claim = getClaim();
+    if (!claim || claim.heroName !== heroName) return;
+    const res = await fetch('/api/hero/retire', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ heroName, claimToken: claim.claimToken })
+    });
+    if (res.ok) {
+      clearClaim();
+      closeHeroDetail();
+      const t = document.getElementById('join-toast');
+      t.textContent = `${heroName} has retired. Their legend endures.`;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 4000);
+    }
+  };
 
   // Search
   document.getElementById('hero-search').addEventListener('input', renderHeroes);

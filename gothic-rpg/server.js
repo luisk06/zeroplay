@@ -1,6 +1,7 @@
 const express = require('express');
 const fs      = require('fs');
 const path    = require('path');
+const crypto  = require('crypto');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -108,7 +109,10 @@ function serializeWorld(w) {
       xp:h.xp, level:h.level, loot:h.loot, kills:h.kills,
       color:h.color, state: (h.state === 'hunt' || h.state === 'wounded') ? h.state : 'explore',
       stateTimer:h.stateTimer, isBlonde:h.isBlonde, fleeCount:h.fleeCount,
-      falls:h.falls||0, image:h.image
+      falls:h.falls||0, image:h.image,
+      claimToken: h.claimToken || null,  // persisted, never broadcast
+      motto: h.motto || '',
+      retired: h.retired || false, retiredAt: h.retiredAt || null,
     })),
     enemies: w.enemies.map(e => ({
       id:e.id, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,
@@ -127,6 +131,8 @@ function liveHero(h) {
     xp:h.xp, level:h.level, loot:h.loot, kills:h.kills,
     color:h.color, state:h.state, isBlonde:h.isBlonde,
     fleeCount:h.fleeCount, falls:h.falls||0, image:h.image,
+    motto: h.motto || '',
+    hasClaim: !!h.claimToken,  // lets the owner UI know this hero is claimable
     target: h.target ? { name:h.target.name, hp:h.target.hp, maxhp:h.target.maxhp } : null,
     log: W.log.filter(l => l.msg.startsWith(h.name.split(' ')[0])).slice(0, 12)
   };
@@ -142,6 +148,7 @@ function liveSnapshot() {
       xp:h.xp, level:h.level, loot:h.loot, kills:h.kills,
       color:h.color, state:h.state, stateTimer:h.stateTimer,
       isBlonde:h.isBlonde, fleeCount:h.fleeCount, falls:h.falls||0, image:h.image,
+      motto: h.motto || '', hasClaim: !!h.claimToken,
       target: h.target ? { name:h.target.name, hp:h.target.hp, maxhp:h.target.maxhp } : null
     })),
     enemies: W.enemies.map(e => ({
@@ -469,20 +476,63 @@ app.post('/api/join', (req, res) => {
   const image       = availImages.length ? pick(availImages) : pick(HERO_IMAGES);
 
   const baseAtk = 3 + rng(4);
+  const claimToken = crypto.randomUUID();
   const newHero = {
     name: heroName, hp: 20 + rng(10), maxhp: 30,
     atk: baseAtk, baseAtk,
     xp:0, level:1, loot:0, kills:0, falls:0,
     color: HERO_COLORS[rng(HERO_COLORS.length)],
     state:'explore', target:null, stateTimer: 20,
-    isBlonde:false, fleeCount:0, image
+    isBlonde:false, fleeCount:0, image,
+    claimToken,   // stored plaintext — this is a game, not credentials
+    motto: '',
   };
 
   W.heroes.push(newHero);
   lastJoinTime = now;
   addLog(`${firstName} ${title} has joined the world!`, 'explore');
   broadcast({ type:'state', world: liveSnapshot(), combatEvents:[] });
-  res.json({ ok:true, heroName });
+  // Return token ONCE — browser must store it
+  res.json({ ok:true, heroName, claimToken });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Hero ownership endpoints (token-gated, no auth required)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Verify a claim token — returns hero name if valid
+app.post('/api/hero/verify', (req, res) => {
+  const { heroName, claimToken } = req.body;
+  const hero = findHeroBySlugOrName(heroName);
+  if (!hero || !hero.claimToken) return res.status(404).json({ error: 'Hero not found' });
+  if (hero.claimToken !== claimToken) return res.status(403).json({ error: 'Invalid token' });
+  res.json({ ok:true, heroName: hero.name, motto: hero.motto || '' });
+});
+
+// Set motto (owner only)
+app.post('/api/hero/motto', (req, res) => {
+  const { heroName, claimToken, motto } = req.body;
+  const hero = findHeroBySlugOrName(heroName);
+  if (!hero || !hero.claimToken) return res.status(404).json({ error: 'Hero not found' });
+  if (hero.claimToken !== claimToken) return res.status(403).json({ error: 'Invalid token' });
+  hero.motto = String(motto || '').slice(0, 80).trim();
+  broadcast({ type:'state', world: liveSnapshot(), combatEvents:[] });
+  res.json({ ok:true, motto: hero.motto });
+});
+
+// Retire hero (owner only) — graceful exit, marks hero as retired
+app.post('/api/hero/retire', (req, res) => {
+  const { heroName, claimToken } = req.body;
+  const hero = findHeroBySlugOrName(heroName);
+  if (!hero || !hero.claimToken) return res.status(404).json({ error: 'Hero not found' });
+  if (hero.claimToken !== claimToken) return res.status(403).json({ error: 'Invalid token' });
+  hero.state    = 'retired';
+  hero.retired  = true;
+  hero.retiredAt = W.year;
+  if (hero.target) { hero.target.engagedBy = null; hero.target = null; }
+  addLog(`${hero.name} has chosen to leave the world. Their legend endures.`, 'death');
+  broadcast({ type:'state', world: liveSnapshot(), combatEvents:[] });
+  res.json({ ok:true });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -560,7 +610,9 @@ async function boot() {
       xp:h.xp||0, level:h.level||1, loot:h.loot||0, kills:h.kills||0, falls:h.falls||0,
       color:h.color||'#7060d0', state: h.state === 'wounded' ? 'wounded' : 'explore',
       target:null, stateTimer: h.state === 'wounded' ? (h.stateTimer||WOUNDED_RECOVERY_TICKS) : 0,
-      isBlonde:h.isBlonde||false, fleeCount:h.fleeCount||0, image:h.image||HERO_IMAGES[0]
+      isBlonde:h.isBlonde||false, fleeCount:h.fleeCount||0, image:h.image||HERO_IMAGES[0],
+      claimToken: h.claimToken || null, motto: h.motto || '',
+      retired: h.retired || false, retiredAt: h.retiredAt || null
     }));
     W.enemies = (saved.enemies || []).map(e => ({
       id:enemyIdCounter++, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,

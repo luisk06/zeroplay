@@ -121,6 +121,34 @@
     #not-found h2 { font-size:16px; color:var(--red); letter-spacing:3px; margin-bottom:12px; font-weight:normal; }
     #not-found p  { font-size:12px; color:var(--text-lo); }
 
+    /* Motto */
+    #hero-motto {
+      font-size:12px; color:var(--text-lo); letter-spacing:1px; font-style:italic;
+      margin-top:6px; min-height:16px;
+    }
+
+    /* Owner panel */
+    #owner-panel {
+      background:#0e0010; border:1px solid #4a2060; padding:16px 18px; margin-bottom:24px;
+    }
+    #owner-panel-title { font-size:9px; letter-spacing:3px; color:var(--gold); text-transform:uppercase; margin-bottom:12px; }
+    .op-row { display:flex; gap:8px; margin-bottom:10px; }
+    .op-input {
+      flex:1; background:#080010; border:1px solid #3a1a50; color:var(--text-hi);
+      font-family:'Courier New',monospace; font-size:12px; padding:7px 10px; outline:none;
+    }
+    .op-input:focus { border-color:var(--purple-dim); }
+    .op-btn {
+      background:#150025; border:1px solid var(--border); color:var(--text-mid);
+      font-family:'Courier New',monospace; font-size:10px; letter-spacing:1px; padding:7px 16px;
+      cursor:pointer; text-transform:uppercase; white-space:nowrap;
+    }
+    .op-btn:hover { background:#200035; color:var(--text-hi); }
+    .op-btn.retire { border-color:#5a1515; color:#aa3333; }
+    .op-btn.retire:hover { background:#1e0808; color:var(--red); }
+    .op-msg { font-size:10px; color:var(--green); letter-spacing:1px; opacity:0; transition:opacity 0.3s; min-height:14px; }
+    .op-msg.show { opacity:1; }
+
     /* Share section */
     #share-section { margin-top:28px; padding-top:16px; border-top:1px solid var(--border2); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
     #share-url {
@@ -151,6 +179,7 @@
     <div id="hero-title">—</div>
     <div id="hero-subtitle">—</div>
     <div id="hero-state-badge">—</div>
+    <div id="hero-motto"></div>
   </div>
 </div>
 
@@ -161,6 +190,19 @@
   </div>
 
   <div id="hero-content" style="display:none;">
+
+    <!-- Owner panel (only visible to the owner, checked via localStorage) -->
+    <div id="owner-panel" style="display:none;">
+      <div id="owner-panel-title">★ Your Hero</div>
+      <div class="op-row">
+        <input class="op-input" id="op-motto" type="text" maxlength="80" placeholder="Set a motto for your hero…">
+        <button class="op-btn" onclick="saveMotto()">Save Motto</button>
+      </div>
+      <div class="op-msg" id="op-msg"></div>
+      <div style="margin-top:10px;">
+        <button class="op-btn retire" onclick="retireHero()">⚰ Retire Hero</button>
+      </div>
+    </div>
 
     <!-- Arena (only when hunting) -->
     <div id="arena-wrap" style="display:none;"></div>
@@ -233,6 +275,11 @@
   function slugify(name) { return name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''); }
   function deslugify(slug) { return slug.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
 
+  // Ownership
+  const CLAIM_KEY = 'gothic-rpg-claim';
+  function getClaim() { try { return JSON.parse(localStorage.getItem(CLAIM_KEY)) || null; } catch { return null; } }
+  function clearClaim() { localStorage.removeItem(CLAIM_KEY); }
+
   const rawParam = new URLSearchParams(location.search).get('name') || '';
   // heroName is what we pass to the SSE — server resolves slug → canonical name
   const heroName = rawParam;
@@ -283,6 +330,23 @@
     badge.style.borderColor = stateColors[hero.state] || '#66bb77';
 
     document.getElementById('viewer-num').textContent = viewers || 0;
+
+    // Motto
+    const mottoEl = document.getElementById('hero-motto');
+    if (mottoEl) mottoEl.textContent = hero.motto ? `"${hero.motto}"` : '';
+
+    // Owner panel — show only if localStorage claim matches this hero
+    const claim = getClaim();
+    const isOwner = claim && claim.heroName === hero.name;
+    const ownerPanel = document.getElementById('owner-panel');
+    if (ownerPanel) {
+      ownerPanel.style.display = isOwner ? '' : 'none';
+      if (isOwner) {
+        const mottoInput = document.getElementById('op-motto');
+        // Only prefill if the input is empty (don't overwrite while typing)
+        if (mottoInput && !mottoInput.value) mottoInput.value = hero.motto || '';
+      }
+    }
 
     // Bars
     const hpPct = Math.max(0, hero.hp / hero.maxhp);
@@ -418,6 +482,40 @@
     };
     es.onerror = () => setTimeout(connect, 3000);
   }
+
+  async function saveMotto() {
+    const claim = getClaim();
+    if (!claim) return;
+    const motto = (document.getElementById('op-motto')?.value || '').trim();
+    const res = await fetch('/api/hero/motto', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ heroName: claim.heroName, claimToken: claim.claimToken, motto })
+    });
+    const msgEl = document.getElementById('op-msg');
+    if (res.ok && msgEl) {
+      msgEl.textContent = 'Motto saved ✓'; msgEl.classList.add('show');
+      setTimeout(() => msgEl.classList.remove('show'), 2200);
+    }
+  }
+  window.saveMotto = saveMotto;
+
+  async function retireHero() {
+    if (!confirm(`Retire this hero? They will leave the world permanently.`)) return;
+    const claim = getClaim();
+    if (!claim) return;
+    const res = await fetch('/api/hero/retire', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ heroName: claim.heroName, claimToken: claim.claimToken })
+    });
+    if (res.ok) {
+      clearClaim();
+      document.getElementById('owner-panel').style.display = 'none';
+      document.getElementById('hero-state-badge').textContent = '⚰ Retired';
+      document.getElementById('hero-state-badge').style.color = '#6a4888';
+      document.getElementById('hero-state-badge').style.borderColor = '#3a1a50';
+    }
+  }
+  window.retireHero = retireHero;
 
   function copyLink() {
     const urlEl = document.getElementById('share-url');
