@@ -7,121 +7,411 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #060008; --bg-panel: #0c000f; --bg-card: #110015;
+      --bg: #060008; --bg-panel: #0c000f; --bg-card: #0e0012; --bg-card2: #110015;
       --border: #2a1040; --border2: #1a0830;
       --purple: #9a60c8; --purple-dim: #7a4a9a;
-      --gold: #e8b830; --red: #cc4444; --green: #44aa55;
+      --gold: #e8b830; --red: #cc4444; --green: #44aa55; --blue: #4488cc; --orange: #cc8822;
       --text-hi: #e8d8f8; --text-mid: #c0a0e0; --text-lo: #9070a8; --text-dim: #6a4888;
     }
-    body { background: var(--bg); font-family: 'Courier New', monospace; color: var(--text-mid); padding: 24px 20px 60px; }
-    #app { max-width: 1000px; margin: 0 auto; }
+    body { background: var(--bg); font-family: 'Courier New', monospace; color: var(--text-mid); min-height: 100vh; }
+    #app { max-width: 1100px; margin: 0 auto; padding: 20px 20px 80px; }
 
-    h1 { font-size: 13px; letter-spacing: 4px; text-transform: uppercase; color: var(--purple); font-weight: normal; margin-bottom: 4px; }
-    .subtitle { font-size: 11px; color: var(--text-lo); letter-spacing: 1px; margin-bottom: 28px; }
+    /* ── Header ── */
+    #admin-header {
+      display: flex; align-items: baseline; justify-content: space-between;
+      border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 20px;
+    }
+    #admin-header h1 { font-size: 12px; letter-spacing: 4px; text-transform: uppercase; color: var(--purple); font-weight: normal; }
+    #admin-header .world-link { font-size: 10px; color: var(--text-lo); text-decoration: none; letter-spacing: 1px; }
+    #admin-header .world-link:hover { color: var(--text-mid); }
 
-    .status-bar { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding: 10px 16px; background: #0e0018; border: 1px solid var(--border); font-size: 11px; }
-    .status-bar span { color: var(--text-lo); letter-spacing: 1px; }
-    .status-bar strong { color: var(--text-hi); }
+    /* ── Status bar ── */
+    #status-bar {
+      display: flex; flex-wrap: wrap; gap: 6px 24px;
+      background: #0a0012; border: 1px solid var(--border2); padding: 10px 16px;
+      margin-bottom: 20px; font-size: 11px;
+    }
+    .stat-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .stat-item .sv { font-size: 18px; color: var(--text-hi); line-height: 1.1; }
+    .stat-item .sl { font-size: 8px; color: var(--text-lo); letter-spacing: 2px; text-transform: uppercase; }
+    #st-paused { color: var(--orange); font-size: 11px; letter-spacing: 2px; display: none; padding: 2px 0; align-self: center; }
 
+    /* ── Sections ── */
+    .section { margin-bottom: 28px; }
     .section-title {
-      font-size: 10px; letter-spacing: 3px; color: var(--text-mid);
-      text-transform: uppercase; margin-bottom: 14px; padding-bottom: 6px;
-      border-bottom: 1px solid var(--border2);
+      font-size: 9px; letter-spacing: 3px; color: var(--text-mid); text-transform: uppercase;
+      padding-bottom: 6px; border-bottom: 1px solid var(--border2); margin-bottom: 14px;
     }
 
-    /* Hero cards */
-    .hero-list { display: flex; flex-direction: column; gap: 16px; }
+    /* ── Buttons ── */
+    .btn {
+      background: #130018; border: 1px solid var(--border); color: var(--text-mid);
+      font-family: 'Courier New', monospace; font-size: 10px; padding: 6px 16px;
+      cursor: pointer; letter-spacing: 1px; text-transform: uppercase;
+      transition: background 0.12s, color 0.12s; white-space: nowrap;
+    }
+    .btn:hover  { background: #1e0030; color: var(--text-hi); }
+    .btn.active { background: #2a0848; color: var(--text-hi); border-color: var(--purple-dim); }
+    .btn.active[data-pause] { background: #2a1800; border-color: var(--orange); color: var(--orange); }
+    .btn.purple { border-color: var(--purple-dim); color: var(--purple); }
+    .btn.purple:hover { background: #1a0830; }
+    .btn.green  { border-color: #2a5a18; color: var(--green); }
+    .btn.green:hover { background: #0e1808; }
+    .btn.danger { border-color: #501010; color: #aa3333; }
+    .btn.danger:hover { background: #1e0808; color: var(--red); }
+    .btn.orange { border-color: #5a3000; color: var(--orange); }
+    .btn.orange:hover { background: #1e0e00; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
+    /* ── Inputs ── */
+    input[type=text], input[type=number], select, textarea {
+      background: #080010; border: 1px solid var(--border2); color: var(--text-hi);
+      font-family: 'Courier New', monospace; font-size: 12px; padding: 6px 9px;
+      outline: none; width: 100%;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--purple-dim); }
+    label { font-size: 9px; letter-spacing: 2px; color: var(--text-lo); text-transform: uppercase; display: block; margin-bottom: 4px; }
+
+    /* ── World controls ── */
+    #world-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* ── Engagement grid ── */
+    .eng-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px;
+    }
+    .eng-card {
+      background: var(--bg-card); border: 1px solid var(--border2); padding: 12px 14px;
+    }
+    .eng-card-name { font-size: 13px; color: var(--text-hi); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .eng-meta { font-size: 10px; color: var(--text-lo); letter-spacing: 0.5px; line-height: 1.8; }
+    .eng-meta .hi { color: var(--text-mid); }
+    .eng-presence-bar { height: 3px; background: #1a0828; margin: 6px 0 4px; border-radius: 1px; overflow: hidden; }
+    .eng-presence-fill { height: 100%; border-radius: 1px; transition: width 0.5s; background: #4a2a80; }
+    .eng-presence-fill.noticed   { background: #6a40a0; }
+    .eng-presence-fill.witnessed { background: #8a50c0; }
+    .eng-presence-fill.exalted   { background: linear-gradient(90deg,#9a60c8,#e8b830); }
+    .eng-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+    .eng-dot.live { background: var(--green); box-shadow: 0 0 5px var(--green); }
+    .eng-dot.idle { background: #3a2050; }
+
+    /* ── Hero admin cards ── */
     .hero-admin-card {
-      background: var(--bg-card); border: 1px solid var(--border2); padding: 16px 18px;
+      background: var(--bg-card); border: 1px solid var(--border2); padding: 14px 16px;
+      margin-bottom: 12px;
     }
     .hero-admin-card.wounded { border-color: #5a3000; }
     .hero-admin-card.blonde  { border-color: #5a4010; }
-
-    .hero-card-header { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
-    .hero-portrait { width: 52px; height: 52px; object-fit: cover; object-position: top center; border: 1px solid var(--border2); flex-shrink: 0; filter: brightness(0.85); }
-    .hero-card-name { font-size: 15px; color: var(--text-hi); letter-spacing: 0.5px; margin-bottom: 3px; }
-    .hero-card-meta { font-size: 11px; color: var(--text-lo); letter-spacing: 1px; }
+    .hero-card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .hero-portrait { width: 48px; height: 48px; object-fit: cover; object-position: top; border: 1px solid var(--border2); flex-shrink: 0; filter: brightness(0.85); }
+    .hero-card-name { font-size: 14px; color: var(--text-hi); margin-bottom: 2px; }
+    .hero-card-meta { font-size: 10px; color: var(--text-lo); letter-spacing: 1px; }
     .state-badge {
-      display: inline-block; font-size: 9px; letter-spacing: 1px; padding: 2px 8px;
-      border: 1px solid; text-transform: uppercase; margin-left: 8px;
+      display: inline-block; font-size: 8px; letter-spacing: 1px; padding: 2px 7px;
+      border: 1px solid; text-transform: uppercase; margin-left: 8px; vertical-align: middle;
     }
     .state-badge.explore { color: #66bb77; border-color: #154020; }
     .state-badge.hunt    { color: #e05555; border-color: #5a1515; }
     .state-badge.flee    { color: #55aaee; border-color: #153060; }
-    .state-badge.wounded { color: #cc8822; border-color: #5a3000; }
-
+    .state-badge.wounded { color: var(--orange); border-color: #5a3000; }
+    .hero-trait-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .trait-chip { font-size: 8px; letter-spacing: 1px; padding: 2px 7px; border: 1px solid #3a1a58; color: var(--purple-dim); }
+    .mood-line { font-size: 10px; color: var(--text-lo); margin-bottom: 10px; letter-spacing: 0.5px; }
     .fields-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px;
-      margin-bottom: 14px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px;
+      margin-bottom: 12px;
     }
-    .field-group { display: flex; flex-direction: column; gap: 4px; }
-    .field-group label { font-size: 9px; letter-spacing: 2px; color: var(--text-lo); text-transform: uppercase; }
-    .field-group input, .field-group select {
-      background: #080010; border: 1px solid var(--border2); color: var(--text-hi);
-      font-family: 'Courier New', monospace; font-size: 13px; padding: 6px 8px;
-      width: 100%; outline: none;
-    }
-    .field-group input:focus, .field-group select:focus { border-color: var(--purple-dim); }
-
-    .card-actions { display: flex; gap: 10px; align-items: center; }
-    .btn {
-      background: #150020; border: 1px solid var(--border); color: var(--text-mid);
-      font-family: 'Courier New', monospace; font-size: 11px; padding: 6px 18px;
-      cursor: pointer; letter-spacing: 1px; text-transform: uppercase; transition: background 0.12s;
-    }
-    .btn:hover  { background: #200030; color: var(--text-hi); }
-    .btn.active { background: #2a0848; color: var(--text-hi); border-color: var(--purple-dim); }
-    .btn[data-pause].active { background: #2a1000; border-color: #cc8822; color: #cc8822; }
-    .btn.save { border-color: var(--purple-dim); color: var(--purple); }
-    .btn.save:hover { background: #1a0830; }
-    .btn.danger { border-color: #501010; color: #aa3333; }
-    .btn.danger:hover { background: #1e0808; color: var(--red); }
-    .save-msg { font-size: 11px; color: var(--green); letter-spacing: 1px; opacity: 0; transition: opacity 0.3s; }
+    .field-group { display: flex; flex-direction: column; gap: 3px; }
+    .card-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .save-msg { font-size: 10px; color: var(--green); letter-spacing: 1px; opacity: 0; transition: opacity 0.3s; }
     .save-msg.show { opacity: 1; }
 
-    /* World controls */
-    .world-controls { display: flex; gap: 10px; margin-bottom: 28px; flex-wrap: wrap; }
+    /* ── Announce panel ── */
+    .announce-row { display: flex; gap: 8px; }
+    .announce-row input { flex: 1; }
+    .announce-row select { width: 130px; flex-shrink: 0; }
 
-    #toast { position: fixed; bottom: 24px; right: 24px; background: #1a0030; border: 1px solid var(--purple-dim); color: var(--text-hi); font-size: 12px; padding: 10px 18px; letter-spacing: 1px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+    /* ── Milestones ── */
+    .milestone-grid { display: flex; flex-direction: column; gap: 8px; }
+    .milestone-row {
+      display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+      background: var(--bg-card); border: 1px solid var(--border2); font-size: 11px;
+    }
+    .milestone-row.claimed { border-color: #2a4018; }
+    .milestone-key { font-size: 9px; color: var(--text-dim); letter-spacing: 1px; width: 140px; flex-shrink: 0; }
+    .milestone-status { flex: 1; color: var(--text-lo); }
+    .milestone-status.claimed { color: var(--green); }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px; background: #14002a;
+      border: 1px solid var(--purple-dim); color: var(--text-hi); font-size: 11px;
+      padding: 10px 18px; letter-spacing: 1px; opacity: 0; transition: opacity 0.3s;
+      pointer-events: none; z-index: 200; max-width: 340px;
+    }
     #toast.show { opacity: 1; }
+    #toast.error { border-color: var(--red); color: #ff8888; }
+
+    /* ── Tabs ── */
+    .tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border2); margin-bottom: 20px; }
+    .tab-btn {
+      background: none; border: none; border-bottom: 2px solid transparent;
+      color: var(--text-lo); font-family: 'Courier New', monospace; font-size: 10px;
+      letter-spacing: 2px; text-transform: uppercase; padding: 8px 18px;
+      cursor: pointer; transition: color 0.12s; margin-bottom: -1px;
+    }
+    .tab-btn:hover { color: var(--text-mid); }
+    .tab-btn.active { color: var(--purple); border-bottom-color: var(--purple); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Two-col layout ── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @media(max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+    /* ── Log viewer ── */
+    #log-viewer { max-height: 340px; overflow-y: auto; }
+    .log-entry { display: flex; gap: 10px; padding: 5px 0; border-bottom: 1px solid #0d000f; font-size: 11px; }
+    .log-yr { font-size: 9px; color: var(--text-lo); min-width: 30px; flex-shrink: 0; }
+    .log-msg { flex: 1; }
+    .log-entry.combat .log-msg { color: #e05555; }
+    .log-entry.loot   .log-msg { color: #d4aa44; }
+    .log-entry.level  .log-msg { color: #5599dd; }
+    .log-entry.death  .log-msg { color: #aa3344; }
+    .log-entry.explore .log-msg { color: #55aa66; }
   </style>
 </head>
 <body>
 <div id="app">
-  <h1>⚔ Gothic RPG — Admin Dashboard</h1>
-  <div class="subtitle">Modify hero data in real time. Changes broadcast immediately to all viewers.</div>
 
-  <div class="status-bar">
-    <span>Year: <strong id="st-year">—</strong></span>
-    <span>Era: <strong id="st-era">—</strong></span>
-    <span>Tick: <strong id="st-tick">—</strong></span>
-    <span>Viewers: <strong id="st-viewers">—</strong></span>
-    <span>Speed: <strong id="st-speed">—</strong></span>
-    <span id="st-paused" style="color:#cc8822;display:none;">⏸ PAUSED</span>
+  <div id="admin-header">
+    <h1>⚔ Gothic RPG — Admin Dashboard</h1>
+    <a class="world-link" href="/" target="_blank">← View World ↗</a>
   </div>
 
-  <div class="section-title">World Controls</div>
-  <div class="world-controls">
-    <button class="btn" data-speed="1" onclick="setSpeed(1)">1× Speed</button>
-    <button class="btn" data-speed="2" onclick="setSpeed(2)">2× Speed</button>
-    <button class="btn" data-speed="4" onclick="setSpeed(4)">4× Speed</button>
-    <button class="btn" data-pause="1" onclick="togglePause()">⏸ Pause</button>
-    <button class="btn danger" onclick="confirmReset()">⟳ Reset World</button>
+  <!-- Status bar -->
+  <div id="status-bar">
+    <div class="stat-item"><span class="sv" id="st-year">—</span><span class="sl">Year</span></div>
+    <div class="stat-item"><span class="sv" id="st-era">—</span><span class="sl">Era</span></div>
+    <div class="stat-item"><span class="sv" id="st-tick">—</span><span class="sl">Tick</span></div>
+    <div class="stat-item"><span class="sv" id="st-heroes">—</span><span class="sl">Heroes</span></div>
+    <div class="stat-item"><span class="sv" id="st-enemies">—</span><span class="sl">Enemies</span></div>
+    <div class="stat-item"><span class="sv" id="st-kills">—</span><span class="sl">Total Kills</span></div>
+    <div class="stat-item"><span class="sv" id="st-viewers">—</span><span class="sl">Watching</span></div>
+    <div class="stat-item"><span class="sv" id="st-speed">—</span><span class="sl">Speed</span></div>
+    <span id="st-paused">⏸ PAUSED</span>
   </div>
 
-  <div class="section-title">Heroes</div>
-  <div class="hero-list" id="hero-list">
-    <div style="color:var(--text-lo);font-size:12px;">Loading...</div>
+  <!-- Tabs -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('world')">World</button>
+    <button class="tab-btn" onclick="switchTab('heroes')">Heroes</button>
+    <button class="tab-btn" onclick="switchTab('engagement')">Engagement</button>
+    <button class="tab-btn" onclick="switchTab('narrative')">Narrative</button>
+    <button class="tab-btn" onclick="switchTab('log')">Chronicle</button>
   </div>
+
+  <!-- ══ TAB: WORLD ══ -->
+  <div class="tab-panel active" id="tab-world">
+
+    <div class="section">
+      <div class="section-title">Simulation Controls</div>
+      <div id="world-controls">
+        <button class="btn" data-speed="1" onclick="setSpeed(1)">1× Speed</button>
+        <button class="btn" data-speed="2" onclick="setSpeed(2)">2× Speed</button>
+        <button class="btn" data-speed="4" onclick="setSpeed(4)">4× Speed</button>
+        <button class="btn" data-pause="1" onclick="togglePause()">⏸ Pause</button>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="section">
+        <div class="section-title">Battlefield</div>
+        <div class="btn-row" style="margin-bottom:10px;">
+          <button class="btn green" onclick="spawnEnemy(1)">+ Spawn 1 Enemy</button>
+          <button class="btn green" onclick="spawnEnemy(3)">+ Spawn 3 Enemies</button>
+          <button class="btn danger" onclick="clearEnemies()">✕ Clear All Enemies</button>
+        </div>
+        <div style="font-size:10px;color:var(--text-lo);">Enemies in world: <span id="enemy-count" style="color:var(--text-mid);">—</span></div>
+        <div style="font-size:10px;color:var(--text-lo);margin-top:4px;">Active combats: <span id="combat-count" style="color:#e05555;">—</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Hero Population</div>
+        <div class="btn-row" style="margin-bottom:10px;">
+          <button class="btn green" onclick="spawnHero()">+ Spawn Hero</button>
+        </div>
+        <div style="font-size:10px;color:var(--text-lo);">Heroes alive: <span id="hero-count-live" style="color:var(--text-mid);">—</span></div>
+        <div style="font-size:10px;color:var(--text-lo);margin-top:4px;">Max allowed: 12</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Danger Zone</div>
+      <div class="btn-row">
+        <button class="btn danger" onclick="seedTestData()">🧪 Seed Test Data</button>
+        <button class="btn danger" onclick="confirmReset()">⟳ Reset World</button>
+      </div>
+      <div style="font-size:10px;color:var(--text-dim);margin-top:8px;letter-spacing:0.5px;">
+        Seed test data populates traits, moods, presence tiers and history for validation. Remove before launch.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ TAB: HEROES ══ -->
+  <div class="tab-panel" id="tab-heroes">
+    <div class="hero-list" id="hero-list">
+      <div style="color:var(--text-lo);font-size:12px;">Loading...</div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: ENGAGEMENT ══ -->
+  <div class="tab-panel" id="tab-engagement">
+    <div class="section">
+      <div class="section-title">Live Viewer Distribution</div>
+      <div class="eng-grid" id="eng-grid">
+        <div style="color:var(--text-lo);font-size:12px;">Loading...</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Milestones Claimed</div>
+      <div class="milestone-grid" id="milestone-grid">
+        <div style="color:var(--text-lo);font-size:12px;">Loading...</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Force-Trigger Milestone (testing)</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="field-group" style="width:200px;">
+          <label>Milestone Key</label>
+          <select id="ms-key-select">
+            <option value="first_level5">first_level5</option>
+            <option value="first_level8">first_level8</option>
+            <option value="first_level12">first_level12</option>
+            <option value="first_kills10">first_kills10</option>
+            <option value="first_kills50">first_kills50</option>
+            <option value="first_falls5">first_falls5</option>
+            <option value="first_exalted">first_exalted</option>
+          </select>
+        </div>
+        <div class="field-group" style="width:200px;">
+          <label>Hero (optional)</label>
+          <input type="text" id="ms-hero-input" placeholder="Hero name or leave blank">
+        </div>
+        <button class="btn orange" onclick="triggerMilestone()">⚡ Fire Milestone</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: NARRATIVE ══ -->
+  <div class="tab-panel" id="tab-narrative">
+
+    <div class="section">
+      <div class="section-title">Announce — Inject Custom Chronicle Entry</div>
+      <div class="announce-row" style="margin-bottom:10px;">
+        <input type="text" id="announce-msg" placeholder="Enter a world event message (max 200 chars)…" maxlength="200">
+        <select id="announce-type">
+          <option value="explore">◈ Explore</option>
+          <option value="combat">⚔ Combat</option>
+          <option value="loot">✦ Loot</option>
+          <option value="level">★ Level</option>
+          <option value="death">† Death</option>
+        </select>
+        <button class="btn purple" onclick="sendAnnounce()">⚡ Broadcast</button>
+      </div>
+      <div style="font-size:10px;color:var(--text-dim);">Message will appear in Recent Chronicles with [⚡] prefix, visible to all viewers immediately.</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Override Hero Mood</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="field-group" style="width:200px;">
+          <label>Hero Name</label>
+          <select id="mood-hero-select"><option value="">— Select hero —</option></select>
+        </div>
+        <div class="field-group" style="width:160px;">
+          <label>Mood</label>
+          <select id="mood-select">
+            <option value="resolute">⚔ Resolute</option>
+            <option value="haunted">👁 Haunted</option>
+            <option value="vengeful">🔥 Vengeful</option>
+            <option value="weary">💤 Weary</option>
+            <option value="triumphant">✨ Triumphant</option>
+          </select>
+        </div>
+        <button class="btn purple" onclick="overrideMood()">Apply Mood</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Override Hero Traits</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="field-group" style="width:200px;">
+          <label>Hero Name</label>
+          <select id="trait-hero-select"><option value="">— Select hero —</option></select>
+        </div>
+        <div class="field-group" style="width:160px;">
+          <label>Trait 1</label>
+          <select id="trait-select-1">
+            <option value="reckless">Reckless</option>
+            <option value="cautious">Cautious</option>
+            <option value="greedy">Greedy</option>
+            <option value="bloodthirsty">Bloodthirsty</option>
+            <option value="cowardly">Cowardly</option>
+            <option value="tenacious">Tenacious</option>
+            <option value="scholarly">Scholarly</option>
+            <option value="cursed">Cursed</option>
+          </select>
+        </div>
+        <div class="field-group" style="width:160px;">
+          <label>Trait 2</label>
+          <select id="trait-select-2">
+            <option value="scholarly">Scholarly</option>
+            <option value="reckless">Reckless</option>
+            <option value="cautious">Cautious</option>
+            <option value="greedy">Greedy</option>
+            <option value="bloodthirsty">Bloodthirsty</option>
+            <option value="cowardly">Cowardly</option>
+            <option value="tenacious">Tenacious</option>
+            <option value="cursed">Cursed</option>
+          </select>
+        </div>
+        <button class="btn purple" onclick="overrideTraits()">Apply Traits</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ TAB: CHRONICLE ══ -->
+  <div class="tab-panel" id="tab-log">
+    <div class="section">
+      <div class="section-title">World Chronicle (latest 40 entries)</div>
+      <div id="log-viewer"></div>
+    </div>
+  </div>
+
 </div>
 
 <div id="toast"></div>
 
 <script>
+(function() {
   let W = null;
 
-  // ── SSE ────────────────────────────────────────────────────
+  // ── Tabs ────────────────────────────────────────────────────
+  window.switchTab = function(name) {
+    document.querySelectorAll('.tab-btn').forEach((b, i) => {
+      const panels = ['world','heroes','engagement','narrative','log'];
+      b.classList.toggle('active', panels[i] === name);
+    });
+    document.querySelectorAll('.tab-panel').forEach(p => {
+      p.classList.toggle('active', p.id === 'tab-' + name);
+    });
+    if (name === 'engagement') refreshEngagement();
+  };
+
+  // ── SSE ──────────────────────────────────────────────────────
   function connectSSE() {
     const es = new EventSource('/api/stream');
     es.onmessage = (e) => {
@@ -131,55 +421,95 @@
     es.onerror = () => setTimeout(connectSSE, 3000);
   }
 
-  // ── Render ─────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────
   function render() {
     if (!W) return;
     document.getElementById('st-year').textContent    = W.year;
-    document.getElementById('st-era').textContent     = W.era;
+    document.getElementById('st-era').textContent     = W.era || '—';
     document.getElementById('st-tick').textContent    = W.tick;
+    document.getElementById('st-heroes').textContent  = W.heroes.length;
+    document.getElementById('st-enemies').textContent = W.enemies.length;
+    document.getElementById('st-kills').textContent   = W.totalKills;
     document.getElementById('st-viewers').textContent = W.viewers || 0;
-    document.getElementById('st-speed').textContent   = W.paused ? '—' : W.speed + '×';
+    document.getElementById('st-speed').textContent   = W.paused ? '—' : (W.speed||1) + '×';
     document.getElementById('st-paused').style.display = W.paused ? '' : 'none';
 
-    // Reflect active speed button
-    document.querySelectorAll('.world-controls .btn[data-speed]').forEach(b => {
+    // Speed buttons
+    document.querySelectorAll('[data-speed]').forEach(b => {
       b.classList.toggle('active', !W.paused && parseInt(b.dataset.speed) === W.speed);
     });
-    // Reflect pause state
-    const pauseBtn = document.querySelector('.world-controls .btn[data-pause]');
-    if (pauseBtn) {
-      pauseBtn.classList.toggle('active', !!W.paused);
-      pauseBtn.textContent = W.paused ? '▶ Resume' : '⏸ Pause';
-    }
+    const pb = document.querySelector('[data-pause]');
+    if (pb) { pb.classList.toggle('active', !!W.paused); pb.textContent = W.paused ? '▶ Resume' : '⏸ Pause'; }
 
+    // World tab quick stats
+    const ec = document.getElementById('enemy-count');
+    const cc = document.getElementById('combat-count');
+    const hc = document.getElementById('hero-count-live');
+    if (ec) ec.textContent = W.enemies.length;
+    if (cc) cc.textContent = W.heroes.filter(h => h.state === 'hunt').length;
+    if (hc) hc.textContent = W.heroes.length;
+
+    // Hero selects in narrative tab
+    const heroSelects = ['mood-hero-select','trait-hero-select'];
+    heroSelects.forEach(id => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">— Select hero —</option>' +
+        W.heroes.map(h => `<option value="${h.name}" ${h.name === cur ? 'selected' : ''}>${h.name}</option>`).join('');
+    });
+
+    // Heroes tab
+    const activeTab = document.querySelector('.tab-panel.active');
+    if (activeTab && activeTab.id === 'tab-heroes') renderHeroes();
+    if (activeTab && activeTab.id === 'tab-log')     renderLog();
+  }
+
+  // ── Heroes tab ───────────────────────────────────────────────
+  function renderHeroes() {
+    if (!W) return;
     const list = document.getElementById('hero-list');
-    // Preserve existing inputs (don't wipe while user is typing)
-    // Only rebuild if hero count changed or names changed
     const currentNames = [...list.querySelectorAll('.hero-admin-card')].map(c => c.dataset.name);
     const newNames = W.heroes.map(h => h.name);
     if (JSON.stringify(currentNames) !== JSON.stringify(newNames)) {
       list.innerHTML = W.heroes.map(heroCard).join('');
     } else {
-      // Just update meta labels (state badge, hp display)
       W.heroes.forEach(h => updateCardMeta(h));
     }
   }
 
   function heroCard(h) {
-    const stateClass = h.state;
     const stateLabel = h.state === 'hunt' ? '⚔ Hunting' : h.state === 'flee' ? '↪ Fleeing' : h.state === 'wounded' ? '✞ Wounded' : '◈ Exploring';
+    const moodObj = { resolute:'⚔ Resolute', haunted:'👁 Haunted', vengeful:'🔥 Vengeful', weary:'💤 Weary', triumphant:'✨ Triumphant' };
+    const traitHtml = (h.traits || []).map(t =>
+      `<span class="trait-chip">◈ ${t.label || t.key || t}</span>`
+    ).join('');
+    const presencePct = Math.min(100, Math.round((h.presence||0)));
+    const tierClass = h.presenceTier === 'Exalted' ? 'exalted' : h.presenceTier === 'Witnessed' ? 'witnessed' : h.presenceTier === 'Noticed' ? 'noticed' : '';
     return `
     <div class="hero-admin-card ${h.isBlonde ? 'blonde' : h.state === 'wounded' ? 'wounded' : ''}" data-name="${h.name}">
       <div class="hero-card-header">
-        ${h.image ? `<img class="hero-portrait" src="${h.image}" alt="${h.name}">` : ''}
-        <div>
+        ${h.image ? `<img class="hero-portrait" src="${h.image}" alt="">` : ''}
+        <div style="flex:1;min-width:0;">
           <div class="hero-card-name">${h.name}${h.isBlonde ? ' ★' : ''}</div>
           <div class="hero-card-meta">
-            Lv ${h.level} &nbsp;·&nbsp; ${h.kills} kills &nbsp;·&nbsp; ${h.falls||0} falls
-            <span class="state-badge ${stateClass} hero-state-badge">${stateLabel}</span>
+            Lv ${h.level} · ${h.kills}⚔ · ${h.falls||0} falls · ${h.isAged ? `⏳${h.heroAge}yr ·` : ''}
+            <span class="state-badge ${h.state} hero-state-badge">${stateLabel}</span>
           </div>
         </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:10px;color:var(--text-lo);">Drama score</div>
+          <div style="font-size:20px;color:var(--text-hi);">${h.dramaScore||0}</div>
+        </div>
       </div>
+
+      ${traitHtml ? `<div class="hero-trait-row">${traitHtml}</div>` : ''}
+      <div class="mood-line">Mood: <span style="color:var(--text-mid);">${moodObj[h.mood] || h.mood || '—'}</span>
+        &nbsp;·&nbsp; Presence: <span style="color:var(--text-mid);">${presencePct}/100</span>
+        <span style="color:var(--text-lo);">(${h.presenceTier || 'Unobserved'})</span>
+      </div>
+      <div class="eng-presence-bar"><div class="eng-presence-fill ${tierClass}" style="width:${presencePct}%;"></div></div>
+
       <div class="fields-grid">
         <div class="field-group"><label>HP</label><input type="number" data-field="hp" value="${h.hp}" min="0" max="${h.maxhp}"></div>
         <div class="field-group"><label>Max HP</label><input type="number" data-field="maxhp" value="${h.maxhp}" min="1"></div>
@@ -191,15 +521,15 @@
         <div class="field-group">
           <label>State</label>
           <select data-field="state">
-            <option value="explore" ${h.state === 'explore' ? 'selected' : ''}>Exploring</option>
-            <option value="flee"    ${h.state === 'flee'    ? 'selected' : ''}>Fleeing</option>
-            <option value="wounded" ${h.state === 'wounded' ? 'selected' : ''}>Wounded</option>
+            <option value="explore" ${h.state==='explore'?'selected':''}>Exploring</option>
+            <option value="flee"    ${h.state==='flee'?'selected':''}>Fleeing</option>
+            <option value="wounded" ${h.state==='wounded'?'selected':''}>Wounded</option>
           </select>
         </div>
       </div>
       <div class="card-actions">
-        <button class="btn save" onclick="saveHero('${h.name}', this)">Save Changes</button>
-        <button class="btn danger" onclick="woundHero('${h.name}')">Force Wound</button>
+        <button class="btn purple" onclick="saveHero('${h.name.replace(/'/g,"\\'")}'  , this)">Save Changes</button>
+        <button class="btn orange" onclick="woundHero('${h.name.replace(/'/g,"\\'")}')">Force Wound</button>
         <span class="save-msg" id="msg-${h.name.replace(/\s/g,'_')}">Saved ✓</span>
       </div>
     </div>`;
@@ -214,9 +544,84 @@
       badge.textContent = stateLabel;
       badge.className = `state-badge ${h.state} hero-state-badge`;
     }
+    const pfill = card.querySelector('.eng-presence-fill');
+    if (pfill) pfill.style.width = Math.min(100, Math.round(h.presence||0)) + '%';
   }
 
-  // ── Actions ────────────────────────────────────────────────
+  // ── Chronicle tab ────────────────────────────────────────────
+  function renderLog() {
+    if (!W) return;
+    const el = document.getElementById('log-viewer');
+    if (!el) return;
+    const icons = { combat:'⚔', loot:'✦', level:'★', death:'†', explore:'◈' };
+    el.innerHTML = (W.log || []).map(l =>
+      `<div class="log-entry ${l.type}">
+        <span class="log-yr">Yr${l.t}</span>
+        <span class="log-msg">${icons[l.type]||'◈'} ${l.msg}</span>
+      </div>`
+    ).join('');
+  }
+
+  // ── Engagement tab ───────────────────────────────────────────
+  async function refreshEngagement() {
+    try {
+      const data = await (await fetch('/api/admin/engagement')).json();
+      renderEngGrid(data);
+      renderMilestoneGrid(data.worldFirsts);
+    } catch(e) { showToast('Engagement fetch failed', true); }
+  }
+
+  function renderEngGrid(data) {
+    const el = document.getElementById('eng-grid');
+    if (!el) return;
+    if (!data.heroes || !data.heroes.length) { el.innerHTML = '<div style="color:var(--text-lo);font-size:12px;">No heroes.</div>'; return; }
+    el.innerHTML = data.heroes
+      .slice().sort((a,b) => b.dramaScore - a.dramaScore)
+      .map(h => {
+        const live = h.heroPageViewers > 0;
+        const tierClass = h.presenceTier === 'Exalted' ? 'exalted' : h.presenceTier === 'Witnessed' ? 'witnessed' : h.presenceTier === 'Noticed' ? 'noticed' : '';
+        const dvMin = Math.floor((h.dailyViewSeconds||0)/60), dvS = (h.dailyViewSeconds||0)%60;
+        return `<div class="eng-card">
+          <div class="eng-card-name">
+            <span class="eng-dot ${live?'live':'idle'}"></span>${h.name}
+          </div>
+          <div class="eng-presence-bar"><div class="eng-presence-fill ${tierClass}" style="width:${h.presence||0}%;"></div></div>
+          <div class="eng-meta">
+            Presence: <span class="hi">${h.presence}</span> (${h.presenceTier})<br>
+            Page viewers: <span class="hi">${h.heroPageViewers}</span><br>
+            Daily view: <span class="hi">${dvMin}m ${dvS}s / 5m</span><br>
+            Drama score: <span class="hi">${h.dramaScore}</span><br>
+            Mood: <span class="hi">${h.mood}</span>${h.isAged ? ` · <span style="color:var(--orange);">⏳${h.heroAge}yr</span>` : ''}<br>
+            Traits: <span class="hi">${(h.traits||[]).join(', ') || '—'}</span>
+          </div>
+        </div>`;
+      }).join('');
+  }
+
+  const MILESTONE_LABELS = {
+    first_level5:  'First hero to reach Veteran (Lv 5)',
+    first_level8:  'First hero to reach Champion (Lv 8)',
+    first_level12: 'First hero to reach Warlord (Lv 12)',
+    first_kills10: 'First hero with 10 kills',
+    first_kills50: 'First hero with 50 kills',
+    first_falls5:  'First hero with 5 falls',
+    first_exalted: 'First hero to reach Exalted Presence',
+  };
+
+  function renderMilestoneGrid(worldFirsts) {
+    const el = document.getElementById('milestone-grid');
+    if (!el) return;
+    el.innerHTML = Object.entries(MILESTONE_LABELS).map(([key, label]) => {
+      const claimed = worldFirsts && worldFirsts[key];
+      return `<div class="milestone-row ${claimed?'claimed':''}">
+        <span class="milestone-key">${key}</span>
+        <span class="milestone-status ${claimed?'claimed':''}">${label}</span>
+        <span style="font-size:10px;color:var(--text-lo);text-align:right;flex-shrink:0;">${claimed ? `✓ ${claimed.heroName} · Yr${claimed.year}` : 'unclaimed'}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Actions ──────────────────────────────────────────────────
   function getHeroFields(name) {
     const card = document.querySelector(`.hero-admin-card[data-name="${name}"]`);
     if (!card) return {};
@@ -225,52 +630,123 @@
     return data;
   }
 
-  async function saveHero(name, btn) {
+  window.saveHero = async function(name) {
     const payload = getHeroFields(name);
-    const res = await fetch('/api/admin/hero', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    const res = await fetch('/api/admin/hero', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
     if (res.ok) {
       const msgEl = document.getElementById('msg-' + name.replace(/\s/g,'_'));
       if (msgEl) { msgEl.classList.add('show'); setTimeout(() => msgEl.classList.remove('show'), 2000); }
-    } else {
-      showToast('Save failed — check console');
-    }
-  }
+    } else { showToast('Save failed', true); }
+  };
 
-  async function woundHero(name) {
-    await fetch('/api/admin/hero', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, state: 'wounded', hp: '1' })
-    });
+  window.woundHero = async function(name) {
+    await fetch('/api/admin/hero', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name, state:'wounded', hp:'1' }) });
     showToast(`${name} forced into wounded state`);
-  }
+  };
 
-  async function setSpeed(s) {
+  window.setSpeed = async function(s) {
     await fetch('/api/speed', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({speed:s}) });
-  }
+  };
 
-  async function togglePause() {
+  window.togglePause = async function() {
     await fetch('/api/pause', { method:'POST' });
-  }
+  };
 
-  async function confirmReset() {
-    if (confirm('Reset the entire world? This cannot be undone.')) {
-      await fetch('/api/reset', { method:'POST' });
-      showToast('World reset.');
-    }
-  }
+  window.confirmReset = async function() {
+    if (!confirm('Reset the entire world? This cannot be undone.')) return;
+    await fetch('/api/reset', { method:'POST' });
+    showToast('World has been reset.');
+  };
 
-  function showToast(msg) {
+  window.seedTestData = async function() {
+    const res = await fetch('/api/admin/seed-test-data', { method:'POST' });
+    const d = await res.json();
+    showToast(d.message || 'Test data seeded');
+  };
+
+  window.spawnEnemy = async function(count) {
+    const res = await fetch('/api/admin/spawn-enemy', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({count: count||1}) });
+    const d = await res.json();
+    if (d.ok) showToast(`Enemy spawned. Total: ${d.enemyCount}`);
+  };
+
+  window.clearEnemies = async function() {
+    if (!confirm('Remove all enemies from the world?')) return;
+    await fetch('/api/admin/clear-enemies', { method:'POST' });
+    showToast('Battlefield cleared.');
+  };
+
+  window.spawnHero = async function() {
+    const res = await fetch('/api/admin/spawn-hero', { method:'POST' });
+    const d = await res.json();
+    if (d.ok) showToast(`${d.heroName} entered the world`);
+    else showToast(d.error || 'Spawn failed', true);
+  };
+
+  window.sendAnnounce = async function() {
+    const message = (document.getElementById('announce-msg')?.value || '').trim();
+    const type    = document.getElementById('announce-type')?.value || 'explore';
+    if (!message) { showToast('Message cannot be empty', true); return; }
+    const res = await fetch('/api/admin/announce', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message, type}) });
+    if (res.ok) {
+      document.getElementById('announce-msg').value = '';
+      showToast('Announcement broadcast ✓');
+    } else { showToast('Announce failed', true); }
+  };
+
+  window.overrideMood = async function() {
+    const name = document.getElementById('mood-hero-select')?.value;
+    const mood = document.getElementById('mood-select')?.value;
+    if (!name) { showToast('Select a hero first', true); return; }
+    const res = await fetch('/api/admin/hero/mood', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, mood}) });
+    if (res.ok) showToast(`${name} mood → ${mood}`);
+    else showToast('Mood override failed', true);
+  };
+
+  window.overrideTraits = async function() {
+    const name   = document.getElementById('trait-hero-select')?.value;
+    const trait1 = document.getElementById('trait-select-1')?.value;
+    const trait2 = document.getElementById('trait-select-2')?.value;
+    if (!name) { showToast('Select a hero first', true); return; }
+    const traits = [trait1, trait2].filter(Boolean);
+    const res = await fetch('/api/admin/hero/traits', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, traits}) });
+    if (res.ok) showToast(`${name} traits updated`);
+    else showToast('Trait override failed', true);
+  };
+
+  window.triggerMilestone = async function() {
+    const key      = document.getElementById('ms-key-select')?.value;
+    const heroName = (document.getElementById('ms-hero-input')?.value || '').trim() || undefined;
+    const res = await fetch('/api/admin/trigger-milestone', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, heroName}) });
+    const d = await res.json();
+    if (d.ok) { showToast('Milestone fired: ' + d.message.slice(0,60)); refreshEngagement(); }
+    else showToast(d.error || 'Failed', true);
+  };
+
+  function showToast(msg, isError) {
     const t = document.getElementById('toast');
-    t.textContent = msg; t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2500);
+    t.textContent = msg;
+    t.className   = 'show' + (isError ? ' error' : '');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.className = ''; }, 3000);
   }
 
   connectSSE();
+  // Auto-refresh engagement tab every 15s if open
+  setInterval(() => {
+    const active = document.querySelector('.tab-panel.active');
+    if (active && active.id === 'tab-engagement') refreshEngagement();
+  }, 15000);
+
+  // Switch to heroes tab when clicking Heroes in status bar clicks
+  document.getElementById('tab-heroes').addEventListener('click', () => {
+    if (W) renderHeroes();
+  });
+  document.getElementById('tab-log').addEventListener('click', () => {
+    if (W) renderLog();
+  });
+
+})();
 </script>
 </body>
 </html>

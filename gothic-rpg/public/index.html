@@ -232,6 +232,72 @@
     /* Viewer glow on leaderboard portrait */
     .lb-port.has-viewers { border-color: #5a3a80; box-shadow: 0 0 8px #7a4a9a55; filter: brightness(1); }
 
+    /* ── Milestone banner ── */
+    #milestone-banner {
+      display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+      background: linear-gradient(135deg, #1a0030 0%, #0e0020 50%, #1a0030 100%);
+      border-bottom: 2px solid var(--gold);
+      padding: 14px 24px; text-align: center;
+      animation: milestone-slide-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+    #milestone-banner.show { display: block; }
+    @keyframes milestone-slide-in {
+      from { transform: translateY(-100%); opacity: 0; }
+      to   { transform: translateY(0);     opacity: 1; }
+    }
+    #milestone-banner .ms-star { font-size: 16px; color: var(--gold); letter-spacing: 4px; display: block; margin-bottom: 4px; }
+    #milestone-banner .ms-msg  { font-size: 13px; color: var(--text-hi); letter-spacing: 1px; }
+    #milestone-banner .ms-close {
+      position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: var(--text-lo); font-size: 16px;
+      cursor: pointer; font-family: inherit; line-height: 1;
+    }
+    #milestone-banner .ms-close:hover { color: var(--text-hi); }
+
+    /* ── Directed Discovery spotlight card ── */
+    #spotlight-card {
+      display: none; margin: 0; padding: 12px 20px;
+      background: linear-gradient(90deg, #0e001a 0%, #130025 100%);
+      border-bottom: 1px solid #3a1058;
+    }
+    #spotlight-card.show { display: block; }
+    .spotlight-inner {
+      display: flex; align-items: center; gap: 14px;
+      background: #0a0012; border: 1px solid #4a1880; padding: 12px 14px;
+      max-width: 560px; margin: 0 auto; position: relative;
+    }
+    .spotlight-portrait {
+      width: 52px; height: 52px; object-fit: cover; object-position: top;
+      border: 1px solid #5a2888; flex-shrink: 0; filter: brightness(0.9);
+    }
+    .spotlight-body { flex: 1; min-width: 0; }
+    .spotlight-label { font-size: 8px; letter-spacing: 3px; color: var(--purple-dim); text-transform: uppercase; margin-bottom: 4px; }
+    .spotlight-name  { font-size: 14px; color: var(--text-hi); margin-bottom: 3px; }
+    .spotlight-why   { font-size: 10px; color: var(--text-lo); letter-spacing: 0.5px; }
+    .spotlight-cta {
+      font-size: 9px; letter-spacing: 2px; color: var(--purple); border: 1px solid var(--purple-dim);
+      padding: 5px 12px; text-decoration: none; white-space: nowrap; flex-shrink: 0;
+      transition: background 0.12s;
+    }
+    .spotlight-cta:hover { background: #1a0030; color: var(--text-hi); }
+    .spotlight-dismiss {
+      position: absolute; top: 6px; right: 8px; background: none; border: none;
+      color: var(--text-dim); font-size: 12px; cursor: pointer; line-height: 1;
+    }
+    .spotlight-dismiss:hover { color: var(--text-lo); }
+
+    /* ── Vigil viewer dots ── */
+    .vigil-dots { display: inline-flex; gap: 3px; align-items: center; margin-left: 6px; vertical-align: middle; }
+    .vigil-dot  {
+      width: 5px; height: 5px; border-radius: 50%; background: #5a3a88;
+      display: inline-block; flex-shrink: 0;
+    }
+    .vigil-dot.active { background: #9a60c8; box-shadow: 0 0 4px #9a60c855; }
+    .vigil-dot.pulse  { background: #b070e0; animation: vigil-pulse 1.2s ease-in-out infinite alternate; }
+    @keyframes vigil-pulse { from { opacity: 1; box-shadow: 0 0 5px #b070e088; } to { opacity: 0.4; box-shadow: none; } }
+    /* Combat row pulse when viewers present */
+    .lb-row.has-live-viewers .lb-name { text-shadow: 0 0 8px #9a60c844; }
+
     /* ── Death toast ── */
     #death-toast {
       position: fixed; top: 24px; left: 50%; transform: translateX(-50%) translateY(-80px);
@@ -897,6 +963,27 @@
     </div>
   </div>
 
+  <!-- Milestone banner (fixed top, fires once per milestone) -->
+  <div id="milestone-banner">
+    <span class="ms-star">✸ ✸ ✸</span>
+    <span class="ms-msg" id="milestone-msg">—</span>
+    <button class="ms-close" onclick="closeMilestoneBanner()">✕</button>
+  </div>
+
+  <!-- Directed Discovery spotlight card (first-visit only) -->
+  <div id="spotlight-card">
+    <div class="spotlight-inner">
+      <img class="spotlight-portrait" id="spotlight-portrait" src="" alt="">
+      <div class="spotlight-body">
+        <div class="spotlight-label">✦ Featured This Moment</div>
+        <div class="spotlight-name" id="spotlight-name">—</div>
+        <div class="spotlight-why" id="spotlight-why">—</div>
+      </div>
+      <a class="spotlight-cta" id="spotlight-cta" href="#">Watch →</a>
+      <button class="spotlight-dismiss" onclick="dismissSpotlight()" title="Dismiss">✕</button>
+    </div>
+  </div>
+
   <!-- Era progress bar -->
   <div id="era-progress-wrap">
     <div id="era-progress-inner">
@@ -1070,12 +1157,82 @@
           syncControls(W.speed, W.paused);
           setViewerCount(W.viewers || 0);
         }
+      } else if (msg.type === 'milestone') {
+        showMilestoneBanner(msg.message);
       } else if (msg.type === 'control') {
         if (!viewerPaused) syncControls(msg.speed, msg.paused);
       } else if (msg.type === 'viewers') {
         setViewerCount(msg.viewers || 0);
       }
     };
+  }
+
+  // ── Milestone banner ────────────────────────────────────────
+  let _milestoneDismissTimer = null;
+  function showMilestoneBanner(msg) {
+    const banner = document.getElementById('milestone-banner');
+    const msgEl  = document.getElementById('milestone-msg');
+    if (!banner || !msgEl) return;
+    msgEl.textContent = msg;
+    banner.classList.add('show');
+    clearTimeout(_milestoneDismissTimer);
+    _milestoneDismissTimer = setTimeout(() => banner.classList.remove('show'), 8000);
+  }
+  window.closeMilestoneBanner = function() {
+    const banner = document.getElementById('milestone-banner');
+    if (banner) banner.classList.remove('show');
+    clearTimeout(_milestoneDismissTimer);
+  };
+
+  // ── Directed Discovery spotlight ────────────────────────────
+  // Shows once per session to first-time visitors; picks highest drama-score hero
+  const _spotlightKey = 'gothic-rpg-spotlight-seen';
+  let _spotlightDismissed = false;
+
+  function maybeShowSpotlight() {
+    if (_spotlightDismissed) return;
+    if (sessionStorage.getItem(_spotlightKey)) return;   // already seen this session
+    if (!W || !W.heroes || !W.heroes.length) return;
+    // Pick highest drama-score hero
+    const best = W.heroes.slice().sort((a, b) => (b.dramaScore||0) - (a.dramaScore||0))[0];
+    if (!best) return;
+    const slug = slugify(best.name);
+    const stateDesc = best.state === 'hunt' ? 'currently in combat' :
+                      best.state === 'wounded' ? 'wounded and recovering' :
+                      best.state === 'flee' ? 'fleeing a battle' : 'exploring the dark';
+    const whyParts = [];
+    if (best.kills > 0) whyParts.push(`${best.kills} kills`);
+    if ((best.falls||0) > 0) whyParts.push(`${best.falls} falls`);
+    if (best.isAged) whyParts.push(`${best.heroAge}-year veteran`);
+    const why = `${stateDesc}${whyParts.length ? ' · ' + whyParts.join(' · ') : ''}`;
+
+    const card    = document.getElementById('spotlight-card');
+    const portEl  = document.getElementById('spotlight-portrait');
+    const nameEl  = document.getElementById('spotlight-name');
+    const whyEl   = document.getElementById('spotlight-why');
+    const ctaEl   = document.getElementById('spotlight-cta');
+    if (!card || !portEl || !nameEl || !whyEl || !ctaEl) return;
+
+    if (best.image) portEl.src = best.image;
+    nameEl.textContent = best.name + (best.isBlonde ? ' ★' : '');
+    whyEl.textContent  = why;
+    ctaEl.href = `/hero?name=${slug}`;
+    card.classList.add('show');
+  }
+
+  window.dismissSpotlight = function() {
+    _spotlightDismissed = true;
+    sessionStorage.setItem(_spotlightKey, '1');
+    const card = document.getElementById('spotlight-card');
+    if (card) card.classList.remove('show');
+  };
+
+  let _spotlightShown = false;
+  function tryShowSpotlight() {
+    if (_spotlightShown) return;
+    _spotlightShown = true;
+    // Small delay so first paint settles
+    setTimeout(maybeShowSpotlight, 800);
   }
 
   function syncControls(speed, paused) {
@@ -1142,6 +1299,7 @@
     renderBanner();
     renderFeed();
     renderLeaderboard();
+    tryShowSpotlight();
     renderHeroes();
     renderThreats();
     renderStats();
@@ -1296,12 +1454,23 @@
       const tierName   = presence >= 90 ? 'Exalted' : presence >= 60 ? 'Witnessed' : presence >= 30 ? 'Noticed' : '';
       const moodEmoji  = h.moodEmoji || '';
       const traitStr   = (h.traits || []).map(t => t.label || t.key || t).join(' · ');
-      return `<a class="lb-row" href="/hero?name=${slugify(h.name)}">
+      const viewers    = h.heroViewers || 0;
+      // Vigil dots: up to 5 dots; filled ones = viewers, animated if in combat with viewers
+      const maxDots    = 5;
+      const filledDots = Math.min(viewers, maxDots);
+      const vigilDots  = filledDots > 0
+        ? `<span class="vigil-dots">${Array.from({length:maxDots}, (_,di) => {
+            const active  = di < filledDots;
+            const pulseIt = active && inCombat;
+            return `<span class="vigil-dot${active?' active':''}${pulseIt?' pulse':''}"></span>`;
+          }).join('')}</span>`
+        : '';
+      return `<a class="lb-row${viewers > 0 ? ' has-live-viewers' : ''}" href="/hero?name=${slugify(h.name)}">
         <span class="lb-rank">${i + 1}</span>
         ${h.image ? `<img class="lb-port" src="${h.image}" alt="${h.name}" style="${portStyle}">` : ''}
         <div class="lb-info">
-          <div class="lb-name ${mine ? 'lb-mine' : ''}">${mine ? '★ ' : ''}${h.name}${inCombat ? '<span class="lb-combat-dot" title="In combat"></span>' : ''}${moodEmoji ? ` <span style="font-size:11px;opacity:0.7;" title="${h.moodLabel||''}">${moodEmoji}</span>` : ''}</div>
-          <div class="lb-sub">${rank.badge} ${rank.name} · Lv ${h.level} · ${stateIcon}${tierName ? ` · <span style="color:${tierColor}">${tierName}</span>` : ''}${hasViewers ? ` · 👁 ${h.heroViewers}` : ''}${traitStr ? ` · <span style="color:var(--text-lo);font-size:9px;">${traitStr}</span>` : ''}</div>
+          <div class="lb-name ${mine ? 'lb-mine' : ''}">${mine ? '★ ' : ''}${h.name}${inCombat ? '<span class="lb-combat-dot" title="In combat"></span>' : ''}${moodEmoji ? ` <span style="font-size:11px;opacity:0.7;" title="${h.moodLabel||''}">${moodEmoji}</span>` : ''}${vigilDots}</div>
+          <div class="lb-sub">${rank.badge} ${rank.name} · Lv ${h.level} · ${stateIcon}${tierName ? ` · <span style="color:${tierColor}">${tierName}</span>` : ''}${traitStr ? ` · <span style="color:var(--text-lo);font-size:9px;">${traitStr}</span>` : ''}</div>
         </div>
         <span class="lb-kills" title="kills">${h.kills}⚔</span>
       </a>`;

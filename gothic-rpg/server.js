@@ -216,6 +216,7 @@ function liveSnapshot() {
     tick:W.tick, year:W.year, era:era(),
     totalKills:W.totalKills, totalDeaths:W.totalDeaths, totalLoot:W.totalLoot, totalBattles:W.totalBattles,
     speed:simSpeed, paused:simPaused, viewers: clients.size,
+    worldFirsts: W.worldFirsts || {},
     heroes: W.heroes.map(h => {
       const tier = getPresenceTier(h.presence);
       return {
@@ -235,7 +236,8 @@ function liveSnapshot() {
         moodLabel: (MOODS[h.mood] || MOODS.resolute).label,
         moodEmoji: (MOODS[h.mood] || MOODS.resolute).emoji,
         heroAge: heroAge(h),
-        isAged: heroAge(h) >= HERO_AGE_THRESHOLD
+        isAged: heroAge(h) >= HERO_AGE_THRESHOLD,
+        dramaScore: dramascoreOf(h)
       };
     }),
     enemies: W.enemies.map(e => ({
@@ -330,6 +332,7 @@ function defeatHero(h) {
   if (h.falls >= 3) setMood(h, 'haunted');
   else if (h.kills >= 5) setMood(h, 'vengeful');
   else setMood(h, 'weary');
+  checkMilestones(h);
 
   if (h.isBlonde) {
     addLog(`Kael the Stranger has fallen and lies wounded!${penalty}`, 'death');
@@ -408,10 +411,13 @@ function updateHero(h) {
         h.state = 'explore'; h.target = null; h.stateTimer = 15;
         // Mood: triumphant on kill
         if (h.mood !== 'vengeful') setMood(h, 'triumphant');
+        // Milestone check after stats update
+        checkMilestones(h);
         if (h.xp >= h.level * 15) {
           h.level++; h.xp -= h.level * 15;
           h.maxhp += 5 + rng(5); h.hp = Math.min(h.hp + 10, h.maxhp); h.atk++;
           addLog(`${firstName(h)} reached Level ${h.level}!`, 'level');
+          checkMilestones(h);
         }
       }
     }
@@ -500,13 +506,16 @@ function getPresenceTier(presence) {
 function tickPresence() {
   for (const hero of W.heroes) {
     const viewers = heroViewerCount(hero.name);
+    const prevPresence = hero.presence || 0;
     if (viewers > 0) {
       // Diminishing returns: each extra viewer adds less
       const delta = viewers / (viewers + 2);
-      hero.presence = Math.min(PRESENCE_MAX, (hero.presence || 0) + delta);
+      hero.presence = Math.min(PRESENCE_MAX, prevPresence + delta);
     } else {
-      hero.presence = Math.max(0, (hero.presence || 0) - PRESENCE_DECAY);
+      hero.presence = Math.max(0, prevPresence - PRESENCE_DECAY);
     }
+    // Check Exalted milestone when crossing 90
+    if (prevPresence < 90 && hero.presence >= 90) checkMilestones(hero);
   }
 }
 setInterval(tickPresence, 1000);
@@ -530,6 +539,49 @@ function presenceHeal(hero) {
   if (hero.state === 'hunt' && !tier.healInCombat) return;
   if (hero.state === 'wounded') return; // wounded recovery handles its own HP
   hero.hp = Math.min(hero.maxhp, (hero.hp || 0) + tier.healRate);
+}
+
+// ── Milestone system ──────────────────────────────────────────────────────────
+// Tracks world-first achievements. Each fires once, emits a 'milestone' SSE
+// event that the client renders as a full-width banner.
+const MILESTONE_DEFS = [
+  { key:'first_level5',   check: h => h.level >= 5,   msg: h => `${h.name} becomes the first to reach Veteran rank!` },
+  { key:'first_level8',   check: h => h.level >= 8,   msg: h => `${h.name} ascends to Champion — the first of this age!` },
+  { key:'first_level12',  check: h => h.level >= 12,  msg: h => `${h.name} rises to Warlord — an unprecedented feat!` },
+  { key:'first_kills10',  check: h => h.kills >= 10,  msg: h => `${h.name} has slain 10 foes — the first blood-tithe fulfilled!` },
+  { key:'first_kills50',  check: h => h.kills >= 50,  msg: h => `${h.name} reaches 50 kills — a legend is born!` },
+  { key:'first_falls5',   check: h => (h.falls||0) >= 5, msg: h => `${h.name} has fallen 5 times and risen again — truly unkillable.` },
+  { key:'first_exalted',  check: h => (h.presence||0) >= 90, msg: h => `${h.name} ascends to Exalted Presence — the crowd erupts!` },
+];
+
+function checkMilestones(h) {
+  for (const def of MILESTONE_DEFS) {
+    if (W.worldFirsts[def.key]) continue;          // already claimed
+    if (!def.check(h)) continue;
+    W.worldFirsts[def.key] = { heroName: h.name, year: W.year, tick: W.tick };
+    const msg = def.msg(h);
+    addLog(`✸ MILESTONE: ${msg}`, 'level');
+    // Broadcast milestone event to all viewers
+    const milestoneMsg = `data: ${JSON.stringify({ type:'milestone', key: def.key, heroName: h.name, message: msg, year: W.year })}\n\n`;
+    for (const res of clients) {
+      try { res.write(milestoneMsg); } catch(e) { clients.delete(res); }
+    }
+  }
+}
+
+// ── Drama score ───────────────────────────────────────────────────────────────
+// Computed per-hero at broadcast time. Used by the client to spotlight the most
+// narratively compelling hero for first-time visitors.
+// Score = (kills×2) + (level×3) + (falls×4) + (presence/10) + combatBonus + viewerBonus
+function dramascoreOf(h) {
+  const combatBonus  = h.state === 'hunt' ? 15 : 0;
+  const woundedBonus = h.state === 'wounded' ? 8 : 0;
+  const viewerBonus  = heroViewerCount(h.name) * 5;
+  const moodBonus    = h.mood === 'vengeful' ? 10 : h.mood === 'haunted' ? 7 : 0;
+  const ageBonus     = heroAge(h) >= HERO_AGE_THRESHOLD ? 6 : 0;
+  return (h.kills * 2) + (h.level * 3) + ((h.falls||0) * 4) +
+         Math.round((h.presence||0) / 10) + combatBonus + woundedBonus +
+         viewerBonus + moodBonus + ageBonus;
 }
 
 // ── Invoke ability ────────────────────────────────────────────────────────────
@@ -879,6 +931,108 @@ app.post('/api/admin/hero', requireAdmin, (req, res) => {
   addLog(`[ADMIN] ${name} stats modified.`, 'explore');
   broadcast({ type:'state', world: liveSnapshot(), combatEvents:[] });
   res.json({ ok:true });
+});
+
+// Override hero mood (admin)
+app.post('/api/admin/hero/mood', requireAdmin, (req, res) => {
+  const { name, mood } = req.body;
+  const hero = findHeroBySlugOrName(name);
+  if (!hero) return res.status(404).json({ error: 'Hero not found' });
+  if (!MOODS[mood]) return res.status(400).json({ error: 'Unknown mood' });
+  setMood(hero, mood);
+  broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] });
+  res.json({ ok: true, mood });
+});
+
+// Override hero traits (admin)
+app.post('/api/admin/hero/traits', requireAdmin, (req, res) => {
+  const { name, traits } = req.body;
+  const hero = findHeroBySlugOrName(name);
+  if (!hero) return res.status(404).json({ error: 'Hero not found' });
+  const valid = (traits || []).filter(k => TRAITS[k]);
+  if (!valid.length) return res.status(400).json({ error: 'No valid traits provided' });
+  hero.traits = valid.slice(0, 3);
+  broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] });
+  res.json({ ok: true, traits: hero.traits });
+});
+
+// Inject a custom chronicle entry (admin announcement / narrative injection)
+app.post('/api/admin/announce', requireAdmin, (req, res) => {
+  const { message, type } = req.body;
+  const validTypes = ['explore', 'combat', 'loot', 'level', 'death'];
+  const logType = validTypes.includes(type) ? type : 'explore';
+  const msg = String(message || '').trim().slice(0, 200);
+  if (!msg) return res.status(400).json({ error: 'Message required' });
+  addLog(`[⚡] ${msg}`, logType);
+  broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] });
+  res.json({ ok: true });
+});
+
+// Force-spawn a new hero (admin)
+app.post('/api/admin/spawn-hero', requireAdmin, (req, res) => {
+  if (W.heroes.length >= 12) return res.status(400).json({ error: 'Too many heroes (max 12 in admin mode)' });
+  spawnHero(false);
+  const newHero = W.heroes[W.heroes.length - 1];
+  addLog(`A shadow stirs — ${newHero.name} enters the world.`, 'explore');
+  broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] });
+  res.json({ ok: true, heroName: newHero.name });
+});
+
+// Force-trigger a milestone for testing (admin)
+app.post('/api/admin/trigger-milestone', requireAdmin, (req, res) => {
+  const { key, heroName } = req.body;
+  const def = MILESTONE_DEFS.find(d => d.key === key);
+  if (!def) return res.status(400).json({ error: 'Unknown milestone key' });
+  const hero = heroName ? findHeroBySlugOrName(heroName) : W.heroes[0];
+  if (!hero) return res.status(404).json({ error: 'Hero not found' });
+  // Force-fire regardless of condition
+  delete W.worldFirsts[key];
+  W.worldFirsts[key] = { heroName: hero.name, year: W.year, tick: W.tick };
+  const msg = def.msg(hero);
+  addLog(`✸ MILESTONE: ${msg}`, 'level');
+  const milestoneMsg = `data: ${JSON.stringify({ type:'milestone', key, heroName: hero.name, message: msg, year: W.year })}\n\n`;
+  for (const res of clients) { try { res.write(milestoneMsg); } catch(e) { clients.delete(res); } }
+  res.json({ ok: true, message: msg });
+});
+
+// Add enemies to the world (admin)
+app.post('/api/admin/spawn-enemy', requireAdmin, (req, res) => {
+  const { count } = req.body;
+  const n = Math.min(parseInt(count) || 1, 10);
+  for (let i = 0; i < n; i++) spawnEnemy();
+  broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] });
+  res.json({ ok: true, enemyCount: W.enemies.length });
+});
+
+// Remove all enemies (admin — clears battlefield)
+app.post('/api/admin/clear-enemies', requireAdmin, (req, res) => {
+  for (const h of W.heroes) {
+    if (h.target) { h.target.engagedBy = null; h.target = null; }
+    if (h.state === 'hunt') { h.state = 'explore'; h.stateTimer = 20; }
+  }
+  W.enemies = [];
+  broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] });
+  res.json({ ok: true });
+});
+
+// Engagement stats (admin) — per-hero viewer data + world totals
+app.get('/api/admin/engagement', requireAdmin, (req, res) => {
+  res.json({
+    totalWorldViewers: clients.size,
+    heroes: W.heroes.map(h => ({
+      name: h.name,
+      heroPageViewers: heroViewerCount(h.name),
+      dailyViewSeconds: getDailyView(h),
+      presence: Math.round(h.presence || 0),
+      presenceTier: getPresenceTier(h.presence).name,
+      dramaScore: dramascoreOf(h),
+      mood: h.mood || 'resolute',
+      traits: h.traits || [],
+      heroAge: heroAge(h),
+      isAged: heroAge(h) >= HERO_AGE_THRESHOLD,
+    })),
+    worldFirsts: W.worldFirsts,
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
