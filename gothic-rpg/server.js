@@ -81,10 +81,55 @@ const BROADCAST_INTERVAL_TICKS = 10;
 // How long a wounded hero is out of action (in ticks)
 const WOUNDED_RECOVERY_TICKS  = 300;
 
+// ── Hero Personality Traits ───────────────────────────────────────────────────
+// Each hero gets 2 traits at spawn that permanently colour their behaviour.
+const TRAITS = {
+  reckless:   { label:'Reckless',   engage: +0.03,  flee: -0.08,  loot: 0,     xp: 0,    log: ['charges forward heedlessly','hurls themselves at the foe'] },
+  cautious:   { label:'Cautious',   engage: -0.02,  flee: +0.06,  loot: 0,     xp: 0,    log: ['watches from the shadows first','edges forward warily'] },
+  greedy:     { label:'Greedy',     engage: 0,      flee: 0,      loot:+0.003, xp: 0,    log: ['rummages through the ruins','pockets everything in reach'] },
+  bloodthirsty:{ label:'Bloodthirsty', engage:+0.02, flee:-0.05, loot: 0,    xp:+0.10, log: ['thirsts for another kill','fights with savage relish'] },
+  cowardly:   { label:'Cowardly',   engage: -0.03,  flee: +0.10,  loot: 0,     xp:-0.05, log: ['flinches at the sight of the enemy','hesitates at the threshold'] },
+  tenacious:  { label:'Tenacious',  engage: +0.01,  flee: -0.06,  loot: 0,     xp:+0.05, log: ['refuses to yield','grits their teeth and presses on'] },
+  scholarly:  { label:'Scholarly',  engage: 0,      flee: 0,      loot:+0.002, xp:+0.15, log: ['studies the creature\'s weaknesses','recites the old battle-lore'] },
+  cursed:     { label:'Cursed',     engage: +0.02,  flee: 0,      loot:-0.001, xp: 0,    log: ['is drawn toward danger by some dark compulsion','moves as if guided by an unseen hand'] },
+};
+const TRAIT_KEYS = Object.keys(TRAITS);
+
+function pickTraits() {
+  const shuffled = TRAIT_KEYS.slice().sort(() => rngf() - 0.5);
+  return shuffled.slice(0, 2);
+}
+
+function traitEngageMod(h)  { return (h.traits || []).reduce((s, k) => s + (TRAITS[k]?.engage || 0), 0); }
+function traitFleeMod(h)    { return (h.traits || []).reduce((s, k) => s + (TRAITS[k]?.flee   || 0), 0); }
+function traitLootMod(h)    { return (h.traits || []).reduce((s, k) => s + (TRAITS[k]?.loot   || 0), 0); }
+function traitXpMult(h)     { return 1 + (h.traits || []).reduce((s, k) => s + (TRAITS[k]?.xp || 0), 0); }
+function traitLog(h)        { const logs = (h.traits || []).flatMap(k => TRAITS[k]?.log || []); return logs.length ? pick(logs) : null; }
+
+// ── Hero Emotional State ──────────────────────────────────────────────────────
+const MOODS = {
+  resolute:   { label:'Resolute',   emoji:'⚔', desc:'Steady and unshaken.' },
+  haunted:    { label:'Haunted',    emoji:'👁', desc:'Dark memories linger.' },
+  vengeful:   { label:'Vengeful',   emoji:'🔥', desc:'Burning for retribution.' },
+  weary:      { label:'Weary',      emoji:'💤', desc:'The road has taken its toll.' },
+  triumphant: { label:'Triumphant', emoji:'✨', desc:'Riding high on victory.' },
+};
+const MOOD_KEYS = Object.keys(MOODS);
+
+function setMood(h, mood) {
+  h.mood = mood;
+  h.moodText = MOODS[mood]?.desc || '';
+}
+
+// ── Mortality Clock ───────────────────────────────────────────────────────────
+// Heroes gain an "age" in world-years. Old heroes become legendary and stoic.
+// Heroes over age 20 recover more slowly but gain bonus XP from every kill.
+const HERO_AGE_THRESHOLD = 15;   // years before old-age flavour kicks in
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  World state
 // ─────────────────────────────────────────────────────────────────────────────
-let W = { tick:0, year:1, totalKills:0, totalDeaths:0, totalLoot:0, totalBattles:0, heroes:[], enemies:[], log:[] };
+let W = { tick:0, year:1, totalKills:0, totalDeaths:0, totalLoot:0, totalBattles:0, heroes:[], enemies:[], log:[], worldFirsts:{} };
 let simSpeed  = 1;
 let simPaused = false;
 let pendingCombatEvents = [];
@@ -116,6 +161,9 @@ function serializeWorld(w) {
       dailyViewSeconds: h.dailyViewSeconds || 0, dailyViewDay: h.dailyViewDay || null,
       presence: h.presence || 0,
       invokeUsedDay: h.invokeUsedDay || null,
+      traits: h.traits || [],
+      mood: h.mood || 'resolute', moodText: h.moodText || '',
+      bornYear: h.bornYear || 1,
     })),
     enemies: w.enemies.map(e => ({
       id:e.id, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,
@@ -123,13 +171,19 @@ function serializeWorld(w) {
       engagedByName: e.engagedBy ? e.engagedBy.name : null
     })),
     log: w.log.slice(0, 40),
+    worldFirsts: w.worldFirsts || {},
     savedAt: new Date().toISOString()
   };
 }
 
 // Single-hero live data for the hero page
+function heroAge(h) { return Math.max(0, W.year - (h.bornYear || 1)); }
+
 function liveHero(h) {
   const tier = getPresenceTier(h.presence);
+  const age = heroAge(h);
+  const traitLabels = (h.traits || []).map(k => ({ key: k, label: TRAITS[k]?.label || k }));
+  const moodObj = MOODS[h.mood] || MOODS.resolute;
   return {
     name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk, baseAtk:h.baseAtk,
     xp:h.xp, level:h.level, loot:h.loot, kills:h.kills,
@@ -145,7 +199,15 @@ function liveHero(h) {
     presenceAtkMult: tier.atkMult,
     canInvoke: canInvoke(h),
     target: h.target ? { name:h.target.name, hp:h.target.hp, maxhp:h.target.maxhp } : null,
-    log: W.log.filter(l => l.msg.startsWith(h.name.split(' ')[0])).slice(0, 12)
+    log: W.log.filter(l => l.msg.startsWith(h.name.split(' ')[0])).slice(0, 12),
+    traits: traitLabels,
+    mood: h.mood || 'resolute',
+    moodLabel: moodObj.label,
+    moodEmoji: moodObj.emoji,
+    moodDesc: moodObj.desc,
+    bornYear: h.bornYear || 1,
+    heroAge: age,
+    isAged: age >= HERO_AGE_THRESHOLD,
   };
 }
 
@@ -167,7 +229,13 @@ function liveSnapshot() {
         presenceMax: PRESENCE_MAX,
         presenceTier: tier.name,
         presenceAtkMult: tier.atkMult,
-        target: h.target ? { name:h.target.name, hp:h.target.hp, maxhp:h.target.maxhp } : null
+        target: h.target ? { name:h.target.name, hp:h.target.hp, maxhp:h.target.maxhp } : null,
+        traits: (h.traits || []).map(k => ({ key: k, label: TRAITS[k]?.label || k })),
+        mood: h.mood || 'resolute',
+        moodLabel: (MOODS[h.mood] || MOODS.resolute).label,
+        moodEmoji: (MOODS[h.mood] || MOODS.resolute).emoji,
+        heroAge: heroAge(h),
+        isAged: heroAge(h) >= HERO_AGE_THRESHOLD
       };
     }),
     enemies: W.enemies.map(e => ({
@@ -190,6 +258,7 @@ function spawnHero(forceBlonde) {
   const availImages = HERO_IMAGES.filter(i => !usedImages.has(i));
   const image = availImages.length ? pick(availImages) : pick(HERO_IMAGES);
   const baseAtk = isBlonde ? 6 : 3 + rng(4);
+  const traits = isBlonde ? ['tenacious','reckless'] : pickTraits();
   W.heroes.push({
     name:      isBlonde ? 'Kael the Stranger' : HERO_NAMES[rng(HERO_NAMES.length)] + ' ' + pick(HERO_TITLES),
     hp:        isBlonde ? 35 : 20 + rng(10),
@@ -198,7 +267,10 @@ function spawnHero(forceBlonde) {
     xp:0, level:1, loot:0, kills:0, falls:0,
     color: isBlonde ? '#e8b830' : HERO_COLORS[rng(HERO_COLORS.length)],
     state:'explore', target:null, stateTimer:0,
-    isBlonde, fleeCount:0, image
+    isBlonde, fleeCount:0, image,
+    traits,
+    mood: 'resolute', moodText: MOODS.resolute.desc,
+    bornYear: W.year || 1,
   });
 }
 
@@ -253,6 +325,12 @@ function defeatHero(h) {
   h.stateTimer = WOUNDED_RECOVERY_TICKS + rng(100);
 
   const penalty = xpLost > 0 ? ` Lost ${xpLost} XP.` : '';
+
+  // Mood transitions on defeat
+  if (h.falls >= 3) setMood(h, 'haunted');
+  else if (h.kills >= 5) setMood(h, 'vengeful');
+  else setMood(h, 'weary');
+
   if (h.isBlonde) {
     addLog(`Kael the Stranger has fallen and lies wounded!${penalty}`, 'death');
   } else {
@@ -275,6 +353,8 @@ function updateHero(h) {
       h.state = 'explore';
       h.hp = Math.floor(h.maxhp * 0.5);
       h.stateTimer = 20 + rng(20);
+      // Mood on recovery
+      if (h.mood === 'haunted' || h.mood === 'weary') setMood(h, 'resolute');
       addLog(`${firstName(h)} returns to the field, scarred but resolute.`, 'explore');
     }
     return;
@@ -282,13 +362,16 @@ function updateHero(h) {
 
   if (h.state === 'explore') {
     if (h.stateTimer <= 0) h.stateTimer = 20 + rng(30);
-    if (rngf() < 0.003) {
+    const lootChance = 0.003 + traitLootMod(h);
+    if (rngf() < lootChance) {
       h.loot++; W.totalLoot++; h.maxhp += 2;
       if (rngf() < 0.4) h.atk++;
-      addLog(`${firstName(h)} found a ${pick(LOOT_NAMES)}!`, 'loot');
+      const tl = traitLog(h);
+      addLog(`${firstName(h)} found a ${pick(LOOT_NAMES)}! ${tl ? `(${tl})` : ''}`.trim(), 'loot');
     }
     const target = W.enemies.find(e => e.hp > 0 && !e.engagedBy);
-    if (target && rngf() < 0.06) {
+    const engageChance = 0.06 + traitEngageMod(h);
+    if (target && rngf() < engageChance) {
       h.state = 'hunt'; h.target = target; target.engagedBy = h;
       h.stateTimer = 200 + rng(100);
     }
@@ -314,11 +397,17 @@ function updateHero(h) {
       if (h.target.hp <= 0) {
         const tier = h.target.tier || 1;
         const suffix = tier >= 4 ? ' — a mighty victory!' : tier === 3 ? ' — a hard-won fight.' : '!';
-        addLog(`${firstName(h)} slew ${h.target.name}${suffix}`, 'combat');
-        const earnedXp = presenceXp(h, h.target.xpReward);
+        const tl = traitLog(h);
+        addLog(`${firstName(h)} slew ${h.target.name}${suffix}${tl ? ` ${tl}.` : ''}`, 'combat');
+        const baseXp = h.target.xpReward;
+        // Aged hero bonus XP
+        const ageBonus = heroAge(h) >= HERO_AGE_THRESHOLD ? 1.15 : 1;
+        const earnedXp = Math.round(presenceXp(h, baseXp) * traitXpMult(h) * ageBonus);
         h.xp += earnedXp; h.kills++; W.totalKills++; W.totalBattles++;
         W.enemies = W.enemies.filter(e => e !== h.target);
         h.state = 'explore'; h.target = null; h.stateTimer = 15;
+        // Mood: triumphant on kill
+        if (h.mood !== 'vengeful') setMood(h, 'triumphant');
         if (h.xp >= h.level * 15) {
           h.level++; h.xp -= h.level * 15;
           h.maxhp += 5 + rng(5); h.hp = Math.min(h.hp + 10, h.maxhp); h.atk++;
@@ -333,10 +422,15 @@ function updateHero(h) {
       if (h.hp <= 0) {
         defeatHero(h);
       } else if (h.hp < h.maxhp * 0.25 && !h.isBlonde) {
-        h.fleeCount++;
-        addLog(`${firstName(h)} flees from ${h.target.name}!`, 'explore');
-        if (h.target) h.target.engagedBy = null;
-        h.state = 'flee'; h.target = null; h.stateTimer = 20 + rng(15);
+        const fleeRoll = rngf();
+        const fleeMod = traitFleeMod(h);
+        // Reckless heroes rarely flee even when hurt; cowardly flee more
+        if (fleeRoll < 0.6 + fleeMod) {
+          h.fleeCount++;
+          addLog(`${firstName(h)} flees from ${h.target.name}!`, 'explore');
+          if (h.target) h.target.engagedBy = null;
+          h.state = 'flee'; h.target = null; h.stateTimer = 20 + rng(15);
+        }
       }
     }
   } else if (h.state === 'flee') {
@@ -471,6 +565,15 @@ function tick() {
     W.year++;
     addLog(`Year ${W.year} begins. New threats stir in the dark.`, 'explore');
     for (let i = 0; i < 2; i++) spawnEnemy();
+    // Aging flavour for old heroes
+    for (const h of W.heroes) {
+      const age = heroAge(h);
+      if (age === HERO_AGE_THRESHOLD) {
+        addLog(`${firstName(h)} grows gaunt with age, yet fights on.`, 'explore');
+      } else if (age > HERO_AGE_THRESHOLD && age % 5 === 0) {
+        addLog(`${firstName(h)}, survivor of ${age} years, remains unbowed.`, 'explore');
+      }
+    }
   }
   if (W.tick % SAVE_INTERVAL_TICKS === 0) saveState(W).catch(() => {});
   if (W.tick % BROADCAST_INTERVAL_TICKS === 0) {
@@ -779,6 +882,54 @@ app.post('/api/admin/hero', requireAdmin, (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  TEST DATA — admin-only seed endpoint (remove before production)
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/admin/seed-test-data', requireAdmin, (req, res) => {
+  // Set varied presence levels across tiers
+  const presenceValues = [95, 70, 45, 10];
+  const moodValues = ['triumphant', 'haunted', 'vengeful', 'weary', 'resolute'];
+
+  W.heroes.forEach((h, i) => {
+    // Assign varied presence tiers
+    h.presence = presenceValues[i % presenceValues.length];
+    // Assign varied moods
+    h.mood = moodValues[i % moodValues.length];
+    h.moodText = MOODS[h.mood]?.desc || '';
+    // Assign traits if missing
+    if (!h.traits || h.traits.length === 0) h.traits = pickTraits();
+    // Age one hero past the mortality threshold for testing
+    if (i === 0) {
+      h.bornYear = Math.max(1, W.year - (HERO_AGE_THRESHOLD + 3));
+    } else {
+      h.bornYear = h.bornYear || 1;
+    }
+    // Give test heroes some history
+    if (i === 0) { h.kills = 12; h.falls = 2; h.level = 4; h.xp = 30; }
+    if (i === 1) { h.kills = 5;  h.falls = 4; h.level = 2; }
+    if (i === 2) { h.kills = 20; h.falls = 0; h.level = 6; }
+  });
+
+  // Advance world year for context
+  if (W.year < 5) W.year = 5;
+
+  // Seed rich log entries
+  const seedLogs = [
+    { msg:'Aldric charges forward heedlessly into the fray.', type:'explore' },
+    { msg:'Mira studies the Ghoul\'s weaknesses before striking.', type:'combat' },
+    { msg:'[TEST] Presence tiers seeded across all heroes.', type:'explore' },
+    { msg:'Corvus, survivor of 18 years, remains unbowed.', type:'explore' },
+  ];
+  for (const entry of seedLogs.reverse()) {
+    W.log.unshift({ ...entry, t: W.year });
+    if (W.log.length > 40) W.log.pop();
+  }
+
+  saveState(W).catch(() => {});
+  broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] });
+  res.json({ ok: true, message: 'Test data seeded. Remove this endpoint before production.' });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Boot
 // ─────────────────────────────────────────────────────────────────────────────
 async function boot() {
@@ -788,6 +939,7 @@ async function boot() {
     W.totalKills = saved.totalKills || 0; W.totalDeaths = saved.totalDeaths || 0;
     W.totalLoot = saved.totalLoot || 0; W.totalBattles = saved.totalBattles || 0;
     W.log = saved.log || [];
+    W.worldFirsts = saved.worldFirsts || {};
     W.heroes = (saved.heroes || []).map(h => ({
       name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk, baseAtk:h.baseAtk||h.atk,
       xp:h.xp||0, level:h.level||1, loot:h.loot||0, kills:h.kills||0, falls:h.falls||0,
@@ -797,7 +949,10 @@ async function boot() {
       claimToken: h.claimToken || null, motto: h.motto || '',
       retired: h.retired || false, retiredAt: h.retiredAt || null,
       dailyViewSeconds: h.dailyViewSeconds || 0, dailyViewDay: h.dailyViewDay || null,
-      presence: h.presence || 0, invokeUsedDay: h.invokeUsedDay || null
+      presence: h.presence || 0, invokeUsedDay: h.invokeUsedDay || null,
+      traits: h.traits || pickTraits(),
+      mood: h.mood || 'resolute', moodText: h.moodText || MOODS.resolute.desc,
+      bornYear: h.bornYear || 1,
     }));
     W.enemies = (saved.enemies || []).map(e => ({
       id:enemyIdCounter++, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,

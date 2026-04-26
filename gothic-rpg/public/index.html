@@ -1294,12 +1294,14 @@
       const tierColor  = presence >= 90 ? '#e8b830' : presence >= 60 ? '#b070e0' : presence >= 30 ? '#8050c0' : '';
       const portStyle  = tierColor ? `border-color:${tierColor};box-shadow:0 0 10px ${tierColor}44;filter:brightness(1);` : '';
       const tierName   = presence >= 90 ? 'Exalted' : presence >= 60 ? 'Witnessed' : presence >= 30 ? 'Noticed' : '';
+      const moodEmoji  = h.moodEmoji || '';
+      const traitStr   = (h.traits || []).map(t => t.label || t.key || t).join(' · ');
       return `<a class="lb-row" href="/hero?name=${slugify(h.name)}">
         <span class="lb-rank">${i + 1}</span>
         ${h.image ? `<img class="lb-port" src="${h.image}" alt="${h.name}" style="${portStyle}">` : ''}
         <div class="lb-info">
-          <div class="lb-name ${mine ? 'lb-mine' : ''}">${mine ? '★ ' : ''}${h.name}${inCombat ? '<span class="lb-combat-dot" title="In combat"></span>' : ''}</div>
-          <div class="lb-sub">${rank.badge} ${rank.name} · Lv ${h.level} · ${stateIcon}${tierName ? ` · <span style="color:${tierColor}">${tierName}</span>` : ''}${hasViewers ? ` · 👁 ${h.heroViewers}` : ''}</div>
+          <div class="lb-name ${mine ? 'lb-mine' : ''}">${mine ? '★ ' : ''}${h.name}${inCombat ? '<span class="lb-combat-dot" title="In combat"></span>' : ''}${moodEmoji ? ` <span style="font-size:11px;opacity:0.7;" title="${h.moodLabel||''}">${moodEmoji}</span>` : ''}</div>
+          <div class="lb-sub">${rank.badge} ${rank.name} · Lv ${h.level} · ${stateIcon}${tierName ? ` · <span style="color:${tierColor}">${tierName}</span>` : ''}${hasViewers ? ` · 👁 ${h.heroViewers}` : ''}${traitStr ? ` · <span style="color:var(--text-lo);font-size:9px;">${traitStr}</span>` : ''}</div>
         </div>
         <span class="lb-kills" title="kills">${h.kills}⚔</span>
       </a>`;
@@ -1417,6 +1419,8 @@
               <span class="tag ${stateClass} patch-state-tag">${stateLabel}</span>
               <span class="tag tag-state-hunt patch-target-tag" style="${h.target ? '' : 'display:none;'}">vs ${h.target ? h.target.name : ''}</span>
             </div>
+            ${h.moodEmoji ? `<div style="font-size:10px;color:var(--text-lo);margin-top:5px;letter-spacing:1px;">${h.moodEmoji} <span style="color:var(--text-mid);">${h.moodLabel||h.mood||''}</span>${h.isAged ? ` &nbsp;·&nbsp; <span style="color:#cc8822;">⏳ ${h.heroAge} yr veteran</span>` : ''}</div>` : ''}
+            ${(h.traits||[]).length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${(h.traits||[]).map(t=>`<span style="font-size:9px;letter-spacing:1px;padding:2px 7px;border:1px solid #4a2070;color:var(--purple-dim);">◈ ${t.label||t.key||t}</span>`).join('')}</div>` : ''}
           </div>
         </div>
 

@@ -41,12 +41,14 @@
       position:absolute; top:16px; right:16px;
       background:rgba(0,0,0,0.7); border:1px solid #2a3060;
       color:#88ccff; font-size:11px; letter-spacing:1px; padding:5px 12px;
+      z-index:10;
     }
     #back-link {
       position:absolute; top:16px; left:16px;
       background:rgba(0,0,0,0.7); border:1px solid var(--border);
       color:var(--text-lo); font-size:10px; letter-spacing:1px;
       padding:5px 12px; text-decoration:none; transition:color 0.15s;
+      z-index:10;
     }
     #back-link:hover { color:var(--text-mid); }
 
@@ -224,6 +226,34 @@
     }
     .invoke-flash { animation:invoke-flash 0.6s ease-out forwards; }
 
+    /* ── Trait chips ── */
+    #trait-row {
+      display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;
+    }
+    .trait-chip {
+      font-size:9px; letter-spacing:1.5px; text-transform:uppercase;
+      padding:3px 9px; border:1px solid #4a2070; color:var(--purple-dim);
+      background:#0e000f; border-radius:1px;
+    }
+    .trait-chip:before { content:'◈ '; opacity:0.6; }
+
+    /* ── Mood badge ── */
+    #mood-badge {
+      display:inline-flex; align-items:center; gap:5px;
+      font-size:10px; letter-spacing:1.5px; color:var(--text-lo);
+      margin-top:6px;
+    }
+    #mood-badge .mood-emoji { font-size:13px; }
+    #mood-badge .mood-label { color:var(--text-mid); }
+
+    /* ── Age badge ── */
+    #age-badge {
+      display:none; font-size:9px; letter-spacing:2px; text-transform:uppercase;
+      color:#cc8822; border:1px solid #4a2a08; padding:2px 8px; margin-top:6px;
+      width:fit-content;
+    }
+    #age-badge.visible { display:inline-block; }
+
     /* Share section */
     #share-section { margin-top:28px; padding-top:16px; border-top:1px solid var(--border2); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
     #share-url {
@@ -255,6 +285,9 @@
     <div id="hero-subtitle">—</div>
     <div id="hero-state-badge">—</div>
     <div id="hero-motto"></div>
+    <div id="mood-badge"><span class="mood-emoji">⚔</span> <span class="mood-label">Resolute</span> <span class="mood-desc" style="color:var(--text-lo);font-size:9px;margin-left:4px;"></span></div>
+    <div id="age-badge">⏳ Aged Veteran</div>
+    <div id="trait-row"></div>
   </div>
 </div>
 
@@ -448,6 +481,33 @@
     // Motto
     const mottoEl = document.getElementById('hero-motto');
     if (mottoEl) mottoEl.textContent = hero.motto ? `"${hero.motto}"` : '';
+
+    // Mood badge
+    const moodBadge = document.getElementById('mood-badge');
+    if (moodBadge && hero.moodEmoji) {
+      moodBadge.querySelector('.mood-emoji').textContent = hero.moodEmoji;
+      moodBadge.querySelector('.mood-label').textContent = hero.moodLabel || hero.mood || 'Resolute';
+      moodBadge.querySelector('.mood-desc').textContent  = hero.moodDesc ? `· ${hero.moodDesc}` : '';
+    }
+
+    // Age badge
+    const ageBadge = document.getElementById('age-badge');
+    if (ageBadge) {
+      if (hero.isAged) {
+        ageBadge.textContent = `⏳ ${hero.heroAge} Years — Aged Veteran`;
+        ageBadge.classList.add('visible');
+      } else {
+        ageBadge.classList.remove('visible');
+      }
+    }
+
+    // Trait chips
+    const traitRow = document.getElementById('trait-row');
+    if (traitRow && hero.traits) {
+      traitRow.innerHTML = hero.traits.map(t =>
+        `<span class="trait-chip">${t.label || t.key || t}</span>`
+      ).join('');
+    }
 
     // Owner panel — show only if localStorage claim matches this hero
     const claim = getClaim();
