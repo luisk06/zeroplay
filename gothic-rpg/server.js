@@ -164,6 +164,7 @@ function serializeWorld(w) {
       traits: h.traits || [],
       mood: h.mood || 'resolute', moodText: h.moodText || '',
       bornYear: h.bornYear || 1,
+      isMock: h.isMock || false,
     })),
     enemies: w.enemies.map(e => ({
       id:e.id, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,
@@ -208,6 +209,7 @@ function liveHero(h) {
     bornYear: h.bornYear || 1,
     heroAge: age,
     isAged: age >= HERO_AGE_THRESHOLD,
+    isMock: h.isMock || false,
   };
 }
 
@@ -237,7 +239,8 @@ function liveSnapshot() {
         moodEmoji: (MOODS[h.mood] || MOODS.resolute).emoji,
         heroAge: heroAge(h),
         isAged: heroAge(h) >= HERO_AGE_THRESHOLD,
-        dramaScore: dramascoreOf(h)
+        dramaScore: dramascoreOf(h),
+        isMock: h.isMock || false
       };
     }),
     enemies: W.enemies.map(e => ({
@@ -1036,42 +1039,31 @@ app.get('/api/admin/engagement', requireAdmin, (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TEST DATA — admin-only seed endpoint (remove before production)
+//  TEST DATA — admin-only endpoints (flagged isMock:true for bulk deletion)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Seed world state (presence tiers, moods, aging) across existing heroes.
+// Does NOT mark heroes as mock — this only adjusts sim state for visual testing.
 app.post('/api/admin/seed-test-data', requireAdmin, (req, res) => {
-  // Set varied presence levels across tiers
   const presenceValues = [95, 70, 45, 10];
-  const moodValues = ['triumphant', 'haunted', 'vengeful', 'weary', 'resolute'];
+  const moodValues     = ['triumphant', 'haunted', 'vengeful', 'weary', 'resolute'];
 
   W.heroes.forEach((h, i) => {
-    // Assign varied presence tiers
     h.presence = presenceValues[i % presenceValues.length];
-    // Assign varied moods
-    h.mood = moodValues[i % moodValues.length];
+    h.mood     = moodValues[i % moodValues.length];
     h.moodText = MOODS[h.mood]?.desc || '';
-    // Assign traits if missing
-    if (!h.traits || h.traits.length === 0) h.traits = pickTraits();
-    // Age one hero past the mortality threshold for testing
-    if (i === 0) {
-      h.bornYear = Math.max(1, W.year - (HERO_AGE_THRESHOLD + 3));
-    } else {
-      h.bornYear = h.bornYear || 1;
-    }
-    // Give test heroes some history
+    if (!h.traits || !h.traits.length) h.traits = pickTraits();
+    if (i === 0) h.bornYear = Math.max(1, W.year - (HERO_AGE_THRESHOLD + 3));
     if (i === 0) { h.kills = 12; h.falls = 2; h.level = 4; h.xp = 30; }
     if (i === 1) { h.kills = 5;  h.falls = 4; h.level = 2; }
     if (i === 2) { h.kills = 20; h.falls = 0; h.level = 6; }
   });
 
-  // Advance world year for context
   if (W.year < 5) W.year = 5;
 
-  // Seed rich log entries
   const seedLogs = [
-    { msg:'Aldric charges forward heedlessly into the fray.', type:'explore' },
-    { msg:'Mira studies the Ghoul\'s weaknesses before striking.', type:'combat' },
     { msg:'[TEST] Presence tiers seeded across all heroes.', type:'explore' },
-    { msg:'Corvus, survivor of 18 years, remains unbowed.', type:'explore' },
+    { msg:'[TEST] Moods and history applied for validation.', type:'explore' },
   ];
   for (const entry of seedLogs.reverse()) {
     W.log.unshift({ ...entry, t: W.year });
@@ -1080,7 +1072,116 @@ app.post('/api/admin/seed-test-data', requireAdmin, (req, res) => {
 
   saveState(W).catch(() => {});
   broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] });
-  res.json({ ok: true, message: 'Test data seeded. Remove this endpoint before production.' });
+  res.json({ ok: true, message: 'World state seeded. Remove before production.' });
+});
+
+// Seed mock owner heroes — each gets a real claimToken and isMock:true flag.
+// Names prefixed with [MOCK] for visual identification everywhere.
+// Safe to call multiple times — skips if mock heroes already exist.
+const MOCK_OWNER_PROFILES = [
+  {
+    nameSuffix: 'the Watcher',     firstName: 'Seraphel',
+    traits: ['scholarly','tenacious'], mood: 'resolute',
+    kills: 8, falls: 1, level: 3, xp: 20, presence: 72,
+    motto: 'Knowledge is the sharpest blade.',
+  },
+  {
+    nameSuffix: 'Darkheart',       firstName: 'Draven',
+    traits: ['bloodthirsty','cursed'], mood: 'vengeful',
+    kills: 24, falls: 3, level: 5, xp: 45, presence: 55,
+    motto: 'I have made peace with the dark.',
+  },
+  {
+    nameSuffix: 'Ashborne',        firstName: 'Lirien',
+    traits: ['cautious','greedy'],  mood: 'haunted',
+    kills: 2, falls: 5, level: 2, xp: 8, presence: 18,
+    motto: '',
+    bornYearOffset: HERO_AGE_THRESHOLD + 5,  // aged veteran
+  },
+];
+
+app.post('/api/admin/seed-mock-owners', requireAdmin, (req, res) => {
+  const existing = W.heroes.filter(h => h.isMock).map(h => h.name);
+  const created  = [];
+
+  for (const profile of MOCK_OWNER_PROFILES) {
+    const heroName = `[MOCK] ${profile.firstName} ${profile.nameSuffix}`;
+    if (W.heroes.some(h => h.name === heroName)) continue;   // already exists
+    if (W.heroes.length >= 12) break;
+
+    const usedImages  = new Set(W.heroes.map(h => h.image));
+    const availImages = HERO_IMAGES.filter(i => !usedImages.has(i));
+    const image       = availImages.length ? pick(availImages) : pick(HERO_IMAGES);
+    const claimToken  = crypto.randomUUID();
+    const baseAtk     = 3 + rng(4);
+    const bornYear    = profile.bornYearOffset
+      ? Math.max(1, W.year - profile.bornYearOffset)
+      : W.year;
+
+    const hero = {
+      name: heroName,
+      hp: 20 + rng(10), maxhp: 30 + profile.level * 5,
+      atk: baseAtk + profile.level, baseAtk,
+      xp: profile.xp, level: profile.level,
+      loot: rng(profile.kills), kills: profile.kills, falls: profile.falls,
+      color: HERO_COLORS[rng(HERO_COLORS.length)],
+      state: 'explore', target: null, stateTimer: 20 + rng(20),
+      isBlonde: false, fleeCount: profile.falls, image,
+      claimToken,
+      motto: profile.motto || '',
+      retired: false, retiredAt: null,
+      dailyViewSeconds: 0, dailyViewDay: null,
+      presence: profile.presence,
+      invokeUsedDay: null,
+      traits: profile.traits,
+      mood: profile.mood, moodText: MOODS[profile.mood]?.desc || '',
+      bornYear,
+      isMock: true,   // ← the deletion flag
+    };
+
+    // Mood text derived from existing setMood logic
+    hero.hp = Math.min(hero.hp, hero.maxhp);
+    W.heroes.push(hero);
+    created.push({ heroName, claimToken });
+    addLog(`[MOCK] ${profile.firstName} ${profile.nameSuffix} enters the world for testing.`, 'explore');
+  }
+
+  saveState(W).catch(() => {});
+  broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] });
+  res.json({
+    ok: true,
+    created,
+    skipped: existing,
+    note: 'Tokens are one-time — store them now. Heroes flagged isMock:true for bulk deletion.',
+  });
+});
+
+// Delete all mock heroes — removes any hero with isMock:true.
+// Disengages active targets before removal.
+app.delete('/api/admin/mock-heroes', requireAdmin, (req, res) => {
+  const before = W.heroes.length;
+  const removed = W.heroes.filter(h => h.isMock).map(h => h.name);
+
+  for (const h of W.heroes.filter(h => h.isMock)) {
+    if (h.target) { h.target.engagedBy = null; h.target = null; }
+    // Close any open SSE connections for this hero
+    const set = heroClients.get(h.name);
+    if (set) {
+      for (const res of set) { try { res.end(); } catch(e) {} }
+      heroClients.delete(h.name);
+    }
+  }
+
+  W.heroes = W.heroes.filter(h => !h.isMock);
+  const after = W.heroes.length;
+
+  if (removed.length) {
+    addLog(`[ADMIN] ${removed.length} mock hero${removed.length > 1 ? 'es' : ''} removed from the world.`, 'death');
+  }
+
+  saveState(W).catch(() => {});
+  broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] });
+  res.json({ ok: true, removed, before, after });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1107,6 +1208,7 @@ async function boot() {
       traits: h.traits || pickTraits(),
       mood: h.mood || 'resolute', moodText: h.moodText || MOODS.resolute.desc,
       bornYear: h.bornYear || 1,
+      isMock: h.isMock || false,
     }));
     W.enemies = (saved.enemies || []).map(e => ({
       id:enemyIdCounter++, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,

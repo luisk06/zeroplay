@@ -168,6 +168,34 @@
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
     @media(max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
 
+    /* ── Mock heroes ── */
+    .mock-badge {
+      display: inline-block; font-size: 8px; letter-spacing: 1px; padding: 1px 6px;
+      border: 1px solid #5a2a00; color: #cc8822; background: #1a0e00;
+      vertical-align: middle; margin-left: 6px;
+    }
+    .hero-admin-card.is-mock { border-color: #5a3a00; background: #0e0a00; }
+    .token-box {
+      background: #080010; border: 1px solid #3a1058; padding: 6px 10px;
+      font-size: 10px; color: var(--text-lo); letter-spacing: 0.5px;
+      word-break: break-all; margin-top: 6px;
+    }
+    .token-box strong { color: var(--text-hi); display: block; margin-bottom: 3px; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; }
+    #mock-token-output {
+      background: #080010; border: 1px solid #4a2a00; padding: 12px 14px;
+      margin-top: 12px; font-size: 11px; display: none;
+    }
+    #mock-token-output h3 { font-size: 9px; letter-spacing: 3px; color: var(--orange); text-transform: uppercase; margin-bottom: 10px; font-weight: normal; }
+    .token-row { display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #1a0a00; }
+    .token-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .token-hero-name { font-size: 12px; color: var(--text-hi); min-width: 200px; flex-shrink: 0; }
+    .token-value { font-size: 10px; color: var(--text-lo); letter-spacing: 0.5px; flex: 1; word-break: break-all; }
+    .token-copy-btn {
+      font-size: 9px; padding: 2px 8px; background: none; border: 1px solid #3a1a50;
+      color: var(--purple-dim); cursor: pointer; font-family: inherit; white-space: nowrap; flex-shrink: 0;
+    }
+    .token-copy-btn:hover { background: #1a0028; color: var(--purple); }
+
     /* ── Log viewer ── */
     #log-viewer { max-height: 340px; overflow-y: auto; }
     .log-entry { display: flex; gap: 10px; padding: 5px 0; border-bottom: 1px solid #0d000f; font-size: 11px; }
@@ -245,13 +273,34 @@
     </div>
 
     <div class="section">
+      <div class="section-title">Mock Owner Testing</div>
+      <p style="font-size:10px;color:var(--text-lo);margin-bottom:10px;letter-spacing:0.5px;line-height:1.6;">
+        Spawns 3 pre-configured hero owners (<code style="color:var(--text-mid);">[MOCK]</code> prefix, <code style="color:var(--text-mid);">isMock:true</code>).
+        Each gets a real claim token you can paste into localStorage to test the owner UX.
+        All mock heroes are safely bulk-deleted when done.
+      </p>
+      <div class="btn-row">
+        <button class="btn orange" onclick="seedMockOwners()">⚗ Spawn Mock Owners</button>
+        <button class="btn danger" onclick="deleteMockHeroes()">✕ Delete All Mock Heroes</button>
+      </div>
+      <div id="mock-token-output">
+        <h3>⚠ Claim Tokens — copy now, not stored elsewhere</h3>
+        <div id="mock-token-list"></div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:10px;">
+          To test as owner: open browser console on the hero page and run<br>
+          <code style="color:var(--text-mid);">localStorage.setItem('gothic-rpg-claim', JSON.stringify({heroName:'NAME',claimToken:'TOKEN',createdAt:Date.now()}))</code>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
       <div class="section-title">Danger Zone</div>
       <div class="btn-row">
-        <button class="btn danger" onclick="seedTestData()">🧪 Seed Test Data</button>
+        <button class="btn danger" onclick="seedTestData()">🧪 Seed World State</button>
         <button class="btn danger" onclick="confirmReset()">⟳ Reset World</button>
       </div>
       <div style="font-size:10px;color:var(--text-dim);margin-top:8px;letter-spacing:0.5px;">
-        Seed test data populates traits, moods, presence tiers and history for validation. Remove before launch.
+        Seed world state applies presence tiers, moods, and history to existing heroes for visual validation. Remove before launch.
       </div>
     </div>
 
@@ -487,11 +536,11 @@
     const presencePct = Math.min(100, Math.round((h.presence||0)));
     const tierClass = h.presenceTier === 'Exalted' ? 'exalted' : h.presenceTier === 'Witnessed' ? 'witnessed' : h.presenceTier === 'Noticed' ? 'noticed' : '';
     return `
-    <div class="hero-admin-card ${h.isBlonde ? 'blonde' : h.state === 'wounded' ? 'wounded' : ''}" data-name="${h.name}">
+    <div class="hero-admin-card ${h.isBlonde ? 'blonde' : h.state === 'wounded' ? 'wounded' : ''}${h.isMock ? ' is-mock' : ''}" data-name="${h.name}">
       <div class="hero-card-header">
         ${h.image ? `<img class="hero-portrait" src="${h.image}" alt="">` : ''}
         <div style="flex:1;min-width:0;">
-          <div class="hero-card-name">${h.name}${h.isBlonde ? ' ★' : ''}</div>
+          <div class="hero-card-name">${h.name}${h.isBlonde ? ' ★' : ''}${h.isMock ? '<span class="mock-badge">MOCK</span>' : ''}</div>
           <div class="hero-card-meta">
             Lv ${h.level} · ${h.kills}⚔ · ${h.falls||0} falls · ${h.isAged ? `⏳${h.heroAge}yr ·` : ''}
             <span class="state-badge ${h.state} hero-state-badge">${stateLabel}</span>
@@ -661,7 +710,50 @@
   window.seedTestData = async function() {
     const res = await fetch('/api/admin/seed-test-data', { method:'POST' });
     const d = await res.json();
-    showToast(d.message || 'Test data seeded');
+    showToast(d.message || 'World state seeded');
+  };
+
+  window.seedMockOwners = async function() {
+    const res = await fetch('/api/admin/seed-mock-owners', { method:'POST' });
+    const d = await res.json();
+    if (!d.ok) { showToast(d.error || 'Failed', true); return; }
+
+    const output = document.getElementById('mock-token-output');
+    const list   = document.getElementById('mock-token-list');
+    if (!output || !list) return;
+
+    if (!d.created.length) {
+      showToast(d.skipped.length ? 'Mock heroes already exist' : 'No heroes created (world full?)');
+      return;
+    }
+
+    list.innerHTML = d.created.map(({heroName, claimToken}) => `
+      <div class="token-row">
+        <span class="token-hero-name">${heroName}</span>
+        <span class="token-value" id="tv-${claimToken.slice(0,8)}">${claimToken}</span>
+        <button class="token-copy-btn" onclick="copyToken('${claimToken}','${heroName}')">Copy</button>
+      </div>
+    `).join('');
+    output.style.display = 'block';
+    showToast(`${d.created.length} mock hero${d.created.length > 1 ? 'es' : ''} spawned — tokens shown below`);
+  };
+
+  window.copyToken = function(token, heroName) {
+    const payload = JSON.stringify({ heroName, claimToken: token, createdAt: Date.now() });
+    const snippet = `localStorage.setItem('gothic-rpg-claim', '${payload.replace(/'/g,"\\'")}')`;
+    navigator.clipboard.writeText(snippet).catch(() => {});
+    showToast(`Claim snippet copied for ${heroName}`);
+  };
+
+  window.deleteMockHeroes = async function() {
+    if (!confirm('Remove all mock heroes (isMock:true) from the world?')) return;
+    const res = await fetch('/api/admin/mock-heroes', { method:'DELETE' });
+    const d   = await res.json();
+    if (d.ok) {
+      const output = document.getElementById('mock-token-output');
+      if (output) output.style.display = 'none';
+      showToast(`Removed ${d.removed.length} mock hero${d.removed.length !== 1 ? 'es' : ''}`);
+    } else { showToast('Delete failed', true); }
   };
 
   window.spawnEnemy = async function(count) {
