@@ -251,6 +251,18 @@
       </div>
     </div>
 
+    <div class="section">
+      <div class="section-title">Storm Controls</div>
+      <div class="btn-row" style="margin-bottom:8px;">
+        <button class="btn orange" id="storm-toggle-btn" onclick="toggleStorm()">⚡ Toggle Storm</button>
+        <button class="btn purple" onclick="forceEncounter()">◈ Force Encounter</button>
+      </div>
+      <div style="font-size:10px;color:var(--text-lo);">
+        Storm active: <strong id="storm-status" style="color:var(--text-mid);">—</strong>
+        &nbsp;·&nbsp; Timer: <strong id="storm-timer" style="color:var(--text-dim);">—</strong> ticks remaining
+      </div>
+    </div>
+
     <div class="two-col">
       <div class="section">
         <div class="section-title">Battlefield</div>
@@ -497,6 +509,16 @@
     if (ec) ec.textContent = W.enemies.length;
     if (cc) cc.textContent = W.heroes.filter(h => h.state === 'hunt').length;
     if (hc) hc.textContent = W.heroes.length;
+
+    // Storm status
+    const stormStatus = document.getElementById('storm-status');
+    const stormTimer  = document.getElementById('storm-timer');
+    const stormBtn    = document.getElementById('storm-toggle-btn');
+    if (stormStatus) stormStatus.textContent = W.stormActive ? '⚡ YES' : 'No';
+    if (stormStatus) stormStatus.style.color = W.stormActive ? '#e05555' : 'var(--text-mid)';
+    if (stormTimer)  stormTimer.textContent  = W.stormTimer || '—';
+    if (stormBtn)    stormBtn.textContent    = W.stormActive ? '⚡ End Storm' : '⚡ Start Storm';
+    if (stormBtn)    stormBtn.classList.toggle('active', !!W.stormActive);
 
     // Hero selects in narrative tab
     const heroSelects = ['mood-hero-select','trait-hero-select'];
@@ -773,6 +795,21 @@
     const d = await res.json();
     if (d.ok) showToast(`${d.heroName} entered the world`);
     else showToast(d.error || 'Spawn failed', true);
+  };
+
+  window.toggleStorm = async function() {
+    const active = W ? !W.stormActive : true;
+    const res = await fetch('/api/admin/storm', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({active}) });
+    const d = await res.json();
+    if (d.ok) showToast(`Storm ${d.stormActive ? 'started ⚡' : 'ended — calm returns'}`);
+    else showToast('Storm toggle failed', true);
+  };
+
+  window.forceEncounter = async function() {
+    const res = await fetch('/api/admin/encounter', { method:'POST' });
+    const d = await res.json();
+    if (d.ok) showToast(`Encounter: ${d.heroes.join(' × ')} (${d.tone})`);
+    else showToast(d.error || 'Encounter failed', true);
   };
 
   window.sendAnnounce = async function() {

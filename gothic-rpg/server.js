@@ -126,10 +126,86 @@ function setMood(h, mood) {
 // Heroes over age 20 recover more slowly but gain bonus XP from every kill.
 const HERO_AGE_THRESHOLD = 15;   // years before old-age flavour kicks in
 
+// ── Storm/Quiet system ────────────────────────────────────────────────────────
+// The world oscillates between calm and storm. During a storm:
+//   • Enemy engagement chance doubles
+//   • Loot find chance +50%
+//   • Wounded recovery ticks reduced by 25%
+//   • Atmospheric log entries fire at start/end
+//   • Frontend era bar pulses red; feed background dims
+//
+// Storm length:  150–400 ticks (~18s–48s at 1× speed)
+// Calm length:   300–700 ticks (~36s–84s)
+// First storm fires after an initial calm period of 400–600 ticks.
+
+const STORM_ENGAGE_MULT  = 2.0;
+const STORM_LOOT_MULT    = 1.5;
+const STORM_RECOVERY_CUT = 0.75;   // recovery ticks multiplied by this during storm
+
+const STORM_START_MSGS = [
+  'The sky tears open — darkness floods the realm.',
+  'A fell wind rises. The air tastes of blood.',
+  'Something ancient stirs. The world shudders.',
+  'Thunder without lightning. The beasts grow bold.',
+  'The shadows deepen. Danger is everywhere.',
+];
+const STORM_END_MSGS = [
+  'The storm breaks. An eerie calm settles.',
+  'Silence. The darkness retreats — for now.',
+  'The air clears. The wounded begin to breathe.',
+  'Stillness returns, thick with the smell of ash.',
+  'The tempest fades. Survivors count their dead.',
+];
+
+// ── Cross-Hero Encounters ─────────────────────────────────────────────────────
+// When two exploring heroes are in proximity, they may cross paths.
+// Encounter frequency: checked every ENCOUNTER_CHECK_TICKS ticks per pair.
+// Pair history tracked in W.heroEncounters (key: "A|B" sorted).
+// Tone escalates: 0 meetings = neutral, 1–2 = familiar, 3+ = legendary.
+
+const ENCOUNTER_CHECK_TICKS = 200;
+const ENCOUNTER_BASE_CHANCE = 0.015;   // per pair per check
+
+const ENCOUNTER_LINES = {
+  neutral: [
+    (a, b) => `${firstName(a)} and ${firstName(b)} cross paths in the dark — a silent nod, then apart.`,
+    (a, b) => `${firstName(a)} glimpses ${firstName(b)} across the ruins. Neither speaks.`,
+    (a, b) => `${firstName(b)} passes ${firstName(a)} without a word. Two fates, briefly aligned.`,
+  ],
+  familiar: [
+    (a, b) => `${firstName(a)} and ${firstName(b)} share a moment of grim recognition.`,
+    (a, b) => `"Still alive," ${firstName(a)} mutters. ${firstName(b)} almost smiles.`,
+    (a, b) => `${firstName(b)} stops. "${firstName(a)}." A name said like a scar.`,
+  ],
+  legendary: [
+    (a, b) => `${firstName(a)} and ${firstName(b)} meet again — old survivors in a dying world.`,
+    (a, b) => `The veterans ${firstName(a)} and ${firstName(b)} cross paths once more. The world remembers.`,
+    (a, b) => `${firstName(b)} and ${firstName(a)}: two names already whispered as legend.`,
+  ],
+};
+
+// Mood-flavoured encounter overlays — appended when moods match interesting combos
+function encounterMoodFlavour(a, b) {
+  if (a.mood === 'vengeful' && b.mood === 'vengeful') return ' Both burn with the same cold fury.';
+  if (a.mood === 'haunted'  || b.mood === 'haunted')  return ' Something unsaid hangs between them.';
+  if (a.mood === 'triumphant' && b.mood === 'weary')  return ` ${firstName(b)} looks at ${firstName(a)}'s pride with hollow eyes.`;
+  if (a.mood === 'triumphant' && b.mood === 'triumphant') return ' Two victors. The world cannot hold both.';
+  return '';
+}
+
+function encounterKey(a, b) {
+  return [a.name, b.name].sort().join('|');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  World state
 // ─────────────────────────────────────────────────────────────────────────────
-let W = { tick:0, year:1, totalKills:0, totalDeaths:0, totalLoot:0, totalBattles:0, heroes:[], enemies:[], log:[], worldFirsts:{} };
+let W = {
+  tick:0, year:1, totalKills:0, totalDeaths:0, totalLoot:0, totalBattles:0,
+  heroes:[], enemies:[], log:[], worldFirsts:{},
+  stormActive: false, stormTimer: 0,
+  heroEncounters: {},   // key → count
+};
 let simSpeed  = 1;
 let simPaused = false;
 let pendingCombatEvents = [];
@@ -173,6 +249,9 @@ function serializeWorld(w) {
     })),
     log: w.log.slice(0, 40),
     worldFirsts: w.worldFirsts || {},
+    stormActive: w.stormActive || false,
+    stormTimer:  w.stormTimer  || 0,
+    heroEncounters: w.heroEncounters || {},
     savedAt: new Date().toISOString()
   };
 }
@@ -219,6 +298,7 @@ function liveSnapshot() {
     totalKills:W.totalKills, totalDeaths:W.totalDeaths, totalLoot:W.totalLoot, totalBattles:W.totalBattles,
     speed:simSpeed, paused:simPaused, viewers: clients.size,
     worldFirsts: W.worldFirsts || {},
+    stormActive: W.stormActive || false,
     heroes: W.heroes.map(h => {
       const tier = getPresenceTier(h.presence);
       return {
@@ -354,21 +434,26 @@ function updateHero(h) {
   presenceHeal(h);
 
   if (h.state === 'wounded') {
-    h.hp = Math.min(h.hp + 1, Math.floor(h.maxhp * 0.5));
+    // During storm, wounded heroes are forced back faster (urgency)
+    const recoveryTick = W.stormActive ? 2 : 1;
+    h.hp = Math.min(h.hp + recoveryTick, Math.floor(h.maxhp * 0.5));
+    h.stateTimer -= W.stormActive ? 1 : 0;   // extra tick burn during storm
     if (h.stateTimer <= 0) {
       h.state = 'explore';
       h.hp = Math.floor(h.maxhp * 0.5);
       h.stateTimer = 20 + rng(20);
       // Mood on recovery
       if (h.mood === 'haunted' || h.mood === 'weary') setMood(h, 'resolute');
-      addLog(`${firstName(h)} returns to the field, scarred but resolute.`, 'explore');
+      const stormReturn = W.stormActive ? ' The storm drove them back to the fight.' : '';
+      addLog(`${firstName(h)} returns to the field, scarred but resolute.${stormReturn}`, 'explore');
     }
     return;
   }
 
   if (h.state === 'explore') {
     if (h.stateTimer <= 0) h.stateTimer = 20 + rng(30);
-    const lootChance = 0.003 + traitLootMod(h);
+    const stormMult   = W.stormActive ? STORM_LOOT_MULT : 1;
+    const lootChance  = (0.003 + traitLootMod(h)) * stormMult;
     if (rngf() < lootChance) {
       h.loot++; W.totalLoot++; h.maxhp += 2;
       if (rngf() < 0.4) h.atk++;
@@ -376,7 +461,8 @@ function updateHero(h) {
       addLog(`${firstName(h)} found a ${pick(LOOT_NAMES)}! ${tl ? `(${tl})` : ''}`.trim(), 'loot');
     }
     const target = W.enemies.find(e => e.hp > 0 && !e.engagedBy);
-    const engageChance = 0.06 + traitEngageMod(h);
+    const stormEngageMult = W.stormActive ? STORM_ENGAGE_MULT : 1;
+    const engageChance = (0.06 + traitEngageMod(h)) * stormEngageMult;
     if (target && rngf() < engageChance) {
       h.state = 'hunt'; h.target = target; target.engagedBy = h;
       h.stateTimer = 200 + rng(100);
@@ -612,9 +698,76 @@ app.post('/api/hero/invoke', (req, res) => {
   res.json({ ok: true, presence: hero.presence });
 });
 
+// ── Storm tick ────────────────────────────────────────────────────────────────
+function tickStorm() {
+  W.stormTimer--;
+  if (W.stormTimer > 0) return;
+
+  if (W.stormActive) {
+    // Storm ends → calm
+    W.stormActive = false;
+    W.stormTimer  = 300 + rng(400);   // calm: 300–700 ticks
+    addLog(pick(STORM_END_MSGS), 'explore');
+    // Broadcast storm-end event
+    const msg = `data: ${JSON.stringify({ type:'storm', active: false })}\n\n`;
+    for (const res of clients) { try { res.write(msg); } catch(e) { clients.delete(res); } }
+  } else {
+    // Calm ends → storm
+    W.stormActive = true;
+    W.stormTimer  = 150 + rng(250);   // storm: 150–400 ticks
+    addLog(pick(STORM_START_MSGS), 'death');
+    const msg = `data: ${JSON.stringify({ type:'storm', active: true })}\n\n`;
+    for (const res of clients) { try { res.write(msg); } catch(e) { clients.delete(res); } }
+  }
+}
+
+// ── Encounter tick ────────────────────────────────────────────────────────────
+function tickEncounters() {
+  const exploring = W.heroes.filter(h => h.state === 'explore' && !h.retired);
+  if (exploring.length < 2) return;
+
+  for (let i = 0; i < exploring.length; i++) {
+    for (let j = i + 1; j < exploring.length; j++) {
+      const a = exploring[i];
+      const b = exploring[j];
+      if (rngf() >= ENCOUNTER_BASE_CHANCE) continue;
+
+      const key   = encounterKey(a, b);
+      const count = W.heroEncounters[key] || 0;
+      W.heroEncounters[key] = count + 1;
+
+      const tone  = count === 0 ? 'neutral' : count <= 2 ? 'familiar' : 'legendary';
+      const lines = ENCOUNTER_LINES[tone];
+      let msg     = pick(lines)(a, b) + encounterMoodFlavour(a, b);
+
+      // Trait colour — if one is reckless and the other cautious, note the contrast
+      const aTraits = a.traits || [];
+      const bTraits = b.traits || [];
+      if (aTraits.includes('reckless') && bTraits.includes('cautious')) {
+        msg += ` ${firstName(a)} itches to move. ${firstName(b)} holds still.`;
+      } else if (aTraits.includes('bloodthirsty') || bTraits.includes('bloodthirsty')) {
+        msg += count >= 3 ? ' The air between them thickens.' : '';
+      }
+
+      addLog(msg, 'explore');
+
+      // Fire encounter SSE event to both heroes' page viewers
+      const encounterEvt = { type:'encounter', heroNames:[a.name, b.name], tone, count: count + 1 };
+      for (const heroName of [a.name, b.name]) {
+        const set = heroClients.get(heroName);
+        if (!set || !set.size) continue;
+        const evtMsg = `data: ${JSON.stringify({ type:'hero-event', event: encounterEvt })}\n\n`;
+        for (const res of set) { try { res.write(evtMsg); } catch(e) { set.delete(res); } }
+      }
+    }
+  }
+}
+
 function tick() {
   W.tick++;
+  tickStorm();
   for (const h of [...W.heroes]) updateHero(h);
+  if (W.tick % ENCOUNTER_CHECK_TICKS === 0) tickEncounters();
   if (W.tick % 80  === 0) repopulate();
   if (W.tick % 600 === 0) {
     W.year++;
@@ -1018,6 +1171,36 @@ app.post('/api/admin/clear-enemies', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// Force-toggle storm state (admin — for testing)
+app.post('/api/admin/storm', requireAdmin, (req, res) => {
+  const { active } = req.body;
+  const newState = (active !== undefined) ? !!active : !W.stormActive;
+  if (newState === W.stormActive) return res.json({ ok: true, stormActive: W.stormActive });
+  W.stormActive = newState;
+  W.stormTimer  = newState ? 150 + rng(250) : 300 + rng(400);
+  const logMsg  = newState ? pick(STORM_START_MSGS) : pick(STORM_END_MSGS);
+  addLog(logMsg, newState ? 'death' : 'explore');
+  const stormMsg = `data: ${JSON.stringify({ type:'storm', active: newState })}\n\n`;
+  for (const res of clients) { try { res.write(stormMsg); } catch(e) { clients.delete(res); } }
+  broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] });
+  res.json({ ok: true, stormActive: W.stormActive });
+});
+
+// Force a cross-hero encounter (admin — for testing)
+app.post('/api/admin/encounter', requireAdmin, (req, res) => {
+  const exploring = W.heroes.filter(h => h.state === 'explore' && !h.retired);
+  if (exploring.length < 2) return res.status(400).json({ error: 'Need at least 2 exploring heroes' });
+  const a = exploring[0], b = exploring[1];
+  const key   = encounterKey(a, b);
+  const count = W.heroEncounters[key] || 0;
+  W.heroEncounters[key] = count + 1;
+  const tone  = count === 0 ? 'neutral' : count <= 2 ? 'familiar' : 'legendary';
+  const msg   = pick(ENCOUNTER_LINES[tone])(a, b) + encounterMoodFlavour(a, b);
+  addLog(msg, 'explore');
+  broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] });
+  res.json({ ok: true, heroes: [a.name, b.name], tone, message: msg });
+});
+
 // Engagement stats (admin) — per-hero viewer data + world totals
 app.get('/api/admin/engagement', requireAdmin, (req, res) => {
   res.json({
@@ -1194,7 +1377,10 @@ async function boot() {
     W.totalKills = saved.totalKills || 0; W.totalDeaths = saved.totalDeaths || 0;
     W.totalLoot = saved.totalLoot || 0; W.totalBattles = saved.totalBattles || 0;
     W.log = saved.log || [];
-    W.worldFirsts = saved.worldFirsts || {};
+    W.worldFirsts   = saved.worldFirsts   || {};
+    W.stormActive   = saved.stormActive   || false;
+    W.stormTimer    = saved.stormTimer    || (400 + rng(200));  // initial calm
+    W.heroEncounters = saved.heroEncounters || {};
     W.heroes = (saved.heroes || []).map(h => ({
       name:h.name, hp:h.hp, maxhp:h.maxhp, atk:h.atk, baseAtk:h.baseAtk||h.atk,
       xp:h.xp||0, level:h.level||1, loot:h.loot||0, kills:h.kills||0, falls:h.falls||0,
@@ -1217,6 +1403,7 @@ async function boot() {
     console.log(`World restored — Year ${W.year}, Tick ${W.tick}`);
   } else {
     console.log('New world starting...');
+    W.stormTimer = 400 + rng(200);   // first storm after initial calm
   }
   repopulate();
 

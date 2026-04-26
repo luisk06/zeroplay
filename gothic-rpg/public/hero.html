@@ -791,6 +791,13 @@
         } else {
           render(msg.hero, msg.viewers, msg.world);
         }
+      } else if (msg.type === 'hero-event') {
+        // Cross-hero encounter notification on this hero's page
+        if (msg.event && msg.event.type === 'encounter') {
+          const other = (msg.event.heroNames || []).find(n => n !== (currentHero && currentHero.name)) || 'another soul';
+          const toneLabel = msg.event.tone === 'legendary' ? '✸ Legendary encounter' : msg.event.tone === 'familiar' ? '◈ Familiar face' : '◈ Crossed paths';
+          showViewerJoinMsg(`${toneLabel} — ${other.split(' ')[0]}`, '#8050c0');
+        }
       } else if (msg.type === 'viewers') {
         const n = msg.viewers || 0;
         document.getElementById('viewer-num').textContent = n;

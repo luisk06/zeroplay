@@ -166,14 +166,38 @@
     /* ── Era progress bar ── */
     #era-progress-wrap {
       padding: 6px 20px 0; background: #080010; border-bottom: 1px solid var(--border2);
+      transition: background 1.2s ease, border-color 1.2s ease;
+    }
+    #era-progress-wrap.storm {
+      background: #0e0008; border-bottom-color: #5a1020;
     }
     #era-progress-inner {
       display: flex; align-items: center; gap: 10px; padding-bottom: 6px;
     }
     #era-progress-label { font-size: 9px; color: var(--text-lo); letter-spacing: 2px; text-transform: uppercase; flex-shrink: 0; }
     #era-progress-track { flex: 1; height: 3px; background: #1a0828; border-radius: 1px; overflow: hidden; }
-    #era-progress-fill  { height: 100%; background: var(--purple-dim); border-radius: 1px; transition: width 0.8s ease; }
+    #era-progress-fill  { height: 100%; background: var(--purple-dim); border-radius: 1px; transition: width 0.8s ease, background 1.2s ease; }
+    #era-progress-fill.storm { background: #992233; animation: storm-bar-pulse 1.4s ease-in-out infinite alternate; }
+    @keyframes storm-bar-pulse { from { opacity:1; } to { opacity:0.45; } }
     #era-progress-end   { font-size: 9px; color: var(--text-dim); letter-spacing: 1px; flex-shrink: 0; }
+
+    /* ── Storm indicator badge ── */
+    #storm-badge {
+      display: none; font-size: 8px; letter-spacing: 2px; text-transform: uppercase;
+      color: #e05555; border: 1px solid #5a1020; padding: 1px 7px;
+      animation: storm-badge-flicker 2s ease-in-out infinite alternate;
+      flex-shrink: 0;
+    }
+    #storm-badge.show { display: inline-block; }
+    @keyframes storm-badge-flicker { from { opacity:1; } to { opacity:0.5; } }
+
+    /* ── Storm overlay on main app ── */
+    #app { transition: box-shadow 1.5s ease; }
+    #app.storm { box-shadow: inset 0 0 60px #5a101888; }
+
+    /* ── Encounter feed entry ── */
+    .feed-entry.encounter .feed-icon { color: #8050c0; }
+    .feed-entry.encounter .feed-msg  { color: #b080d8; font-style: italic; }
 
     /* Event feed */
     .feed-entry {
@@ -990,6 +1014,7 @@
       <span id="era-progress-label">Age of Shadow</span>
       <div id="era-progress-track"><div id="era-progress-fill" style="width:0%"></div></div>
       <span id="era-progress-end">Yr 10</span>
+      <span id="storm-badge">⚡ Storm</span>
     </div>
   </div>
 
@@ -1159,6 +1184,8 @@
         }
       } else if (msg.type === 'milestone') {
         showMilestoneBanner(msg.message);
+      } else if (msg.type === 'storm') {
+        applyStormEvent(msg.active);
       } else if (msg.type === 'control') {
         if (!viewerPaused) syncControls(msg.speed, msg.paused);
       } else if (msg.type === 'viewers') {
@@ -1248,7 +1275,7 @@
     Golem:'🗿', Spectre:'👻', Troll:'👹'
   };
   const LOG_ICONS = {
-    combat:'⚔', loot:'✦', level:'★', death:'†', explore:'◈'
+    combat:'⚔', loot:'✦', level:'★', death:'†', explore:'◈', encounter:'◈'
   };
 
   // ── Rank system ────────────────────────────────────────────
@@ -1355,12 +1382,31 @@
     if (W.era !== _lastEra) { _lastEra = W.era; _eraStartYear = W.year; }
     const elapsed = W.year - _eraStartYear;
     const pct = Math.min(100, Math.round(elapsed / ERA_YEARS * 100));
-    const fill = document.getElementById('era-progress-fill');
+    const fill  = document.getElementById('era-progress-fill');
     const label = document.getElementById('era-progress-label');
     const end   = document.getElementById('era-progress-end');
-    if (fill)  fill.style.width = pct + '%';
+    const wrap  = document.getElementById('era-progress-wrap');
+    const badge = document.getElementById('storm-badge');
+    const app   = document.getElementById('app');
+    if (fill)  { fill.style.width = pct + '%'; fill.classList.toggle('storm', !!W.stormActive); }
     if (label) label.textContent = W.era || 'Age of Shadow';
     if (end)   end.textContent   = `Yr ${_eraStartYear + ERA_YEARS}`;
+    if (wrap)  wrap.classList.toggle('storm', !!W.stormActive);
+    if (badge) badge.classList.toggle('show', !!W.stormActive);
+    if (app)   app.classList.toggle('storm', !!W.stormActive);
+  }
+
+  // ── Storm SSE handler ─────────────────────────────────────
+  function applyStormEvent(active) {
+    if (!W) return;
+    W.stormActive = active;
+    renderEraProgress();
+    // Flash pulse strip border briefly
+    const strip = document.getElementById('pulse-strip');
+    if (strip && active) {
+      strip.style.borderBottomColor = '#5a1020';
+      setTimeout(() => { strip.style.borderBottomColor = ''; }, 2000);
+    }
   }
 
   // ── Pulse strip ───────────────────────────────────────────
