@@ -72,10 +72,12 @@
     }
     #manifesto {
       font-size: 9px;
-      color: var(--text-dim);
+      color: var(--text-lo);
       letter-spacing: 1.5px;
-      margin-top: 3px;
+      margin-top: 4px;
       font-style: italic;
+      border-top: 1px solid var(--border2);
+      padding-top: 4px;
     }
 
     /* Speed controls */
@@ -222,6 +224,8 @@
     .feed-entry.level   .feed-msg { color: #5599dd; }
     .feed-entry.death   .feed-msg { color: #aa3344; }
     .feed-entry.explore .feed-msg { color: #55aa66; }
+    .feed-entry.flee    .feed-msg { color: #cc8822; }
+    .feed-entry.flee    .feed-icon { color: #cc8822; }
 
     /* Flash animation for new entries */
     @keyframes feed-flash-combat  { 0%{background:#3a0a10} 100%{background:transparent} }
@@ -229,11 +233,13 @@
     @keyframes feed-flash-loot    { 0%{background:#2a1a00} 100%{background:transparent} }
     @keyframes feed-flash-death   { 0%{background:#3a0808} 100%{background:transparent} }
     @keyframes feed-flash-explore { 0%{background:#081a10} 100%{background:transparent} }
+    @keyframes feed-flash-flee    { 0%{background:#2a1800} 100%{background:transparent} }
     .feed-new.combat  { animation: feed-flash-combat  1.4s ease-out forwards; }
     .feed-new.level   { animation: feed-flash-level   1.4s ease-out forwards; }
     .feed-new.loot    { animation: feed-flash-loot    1.4s ease-out forwards; }
     .feed-new.death   { animation: feed-flash-death   1.4s ease-out forwards; }
     .feed-new.explore { animation: feed-flash-explore 1.4s ease-out forwards; }
+    .feed-new.flee    { animation: feed-flash-flee    1.4s ease-out forwards; }
 
     /* ── Heavyweight feed entries (death + level-up) ── */
     @keyframes feed-heavy-in { from { opacity:0; transform:translateX(-6px); } to { opacity:1; transform:none; } }
@@ -1332,6 +1338,7 @@
   // ─────────────────────────────────────────────────────────
   let W = { tick:0, year:1, era:'Age of Shadow', totalKills:0, totalDeaths:0, totalLoot:0, totalBattles:0, heroes:[], enemies:[], log:[], speed:2, paused:false };
   let combatEvents = [];
+  let _liveViewers = 0; // tracked independently of W — updated by both state and viewers SSE events
 
   function firstName(h) { return h.name.split(' ')[0]; }
 
@@ -1341,6 +1348,7 @@
   }
 
   function setViewerCount(n) {
+    _liveViewers = n;
     const el = document.getElementById('viewer-count');
     if (el) el.textContent = n === 1 ? '● 1 viewer' : `● ${n} viewers`;
   }
@@ -1374,6 +1382,7 @@
         if (!viewerPaused) syncControls(msg.speed, msg.paused);
       } else if (msg.type === 'viewers') {
         setViewerCount(msg.viewers || 0);
+        renderPulse(); // re-render viewer label immediately without waiting for next state tick
       }
     };
   }
@@ -1405,23 +1414,30 @@
     if (sessionStorage.getItem(_spotlightKey)) return;   // already seen this session
     if (!W || !W.heroes || !W.heroes.length) return;
 
-    // Drama scoring: prefer endangered/wounded heroes over comfortable top-killers
+    // Drama scoring: prefer endangered/wounded/active heroes over comfortable explorers
     function spotlightScore(h) {
-      let score = (h.dramaScore || 0);
+      let score = 0; // ignore server dramaScore — recalculate fresh
       const hpPct = h.maxhp > 0 ? h.hp / h.maxhp : 1;
-      // Critically low HP is the most dramatic
-      if (hpPct < 0.2) score += 120;
-      else if (hpPct < 0.4) score += 60;
-      // Wounded state
-      if (h.state === 'wounded') score += 80;
-      // Active combat
-      if (h.state === 'hunt') score += 40;
-      // Fleeing
-      if (h.state === 'flee') score += 30;
-      // Has viewers already watching — interesting
-      if ((h.heroViewers || 0) > 0) score += 20 * (h.heroViewers || 0);
-      // Aged legends are compelling
-      if (h.isAged) score += 25;
+
+      // State scoring — activity and danger are what make a good spotlight
+      if (h.state === 'wounded')       score += 100;
+      else if (h.state === 'hunt')     score += 70;
+      else if (h.state === 'flee')     score += 50;
+      else /* explore */               score -= 20; // actively penalise idle heroes
+
+      // HP danger — most dramatic signal
+      if (hpPct < 0.15)      score += 130;
+      else if (hpPct < 0.3)  score += 80;
+      else if (hpPct < 0.5)  score += 40;
+      else if (hpPct > 0.85) score -= 30; // full-HP comfortable hero is boring
+
+      // Viewer magnet — if others are already watching, there's something to see
+      if ((h.heroViewers || 0) > 0) score += 30 * (h.heroViewers || 0);
+
+      // Aged veterans add context but only as a tiebreaker
+      if (h.isAged)   score += 15;
+      if (h.kills > 100) score += 10;
+
       return score;
     }
 
@@ -1487,7 +1503,7 @@
     Golem:'🗿', Spectre:'👻', Troll:'👹'
   };
   const LOG_ICONS = {
-    combat:'⚔', loot:'✦', level:'★', death:'†', explore:'◈', encounter:'◈'
+    combat:'⚔', loot:'✦', level:'★', death:'†', explore:'◈', encounter:'◈', flee:'↪'
   };
 
   // ── Rank system ────────────────────────────────────────────
@@ -1629,14 +1645,14 @@
     if (el('pulse-kills'))   el('pulse-kills').textContent   = W.totalKills || 0;
     const inCombat = W.heroes.filter(h => h.state === 'hunt').length;
     if (el('pulse-combat'))  el('pulse-combat').textContent  = inCombat || '—';
-    if (el('pulse-viewers')) el('pulse-viewers').textContent = W.viewers || 0;
+    if (el('pulse-viewers')) el('pulse-viewers').textContent = _liveViewers || 0;
     // Keep browse count label current
     const browseCount = el('browse-count');
     if (browseCount && W.heroes) browseCount.textContent = `(${W.heroes.length})`;
-    // World viewer influence label — visible at 1+ viewers
+    // World viewer influence label — visible at 1+ viewers, uses live count not W.viewers
     const wvLabel = el('world-viewer-label');
     if (wvLabel) {
-      const viewers = W.viewers || 0;
+      const viewers = _liveViewers;
       const label   = W.worldViewerLabel;
       if (label) {
         // Tier active (5+ viewers) — show the tier name

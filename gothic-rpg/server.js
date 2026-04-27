@@ -546,8 +546,10 @@ function updateHero(h) {
     if (rngf() < lootChance) {
       h.loot++; W.totalLoot++; h.maxhp += 2;
       if (rngf() < 0.4) h.atk++;
-      const tl = traitLog(h);
-      addLog(`${firstName(h)} found a ${pick(LOOT_NAMES)}! ${tl ? `(${tl})` : ''}`.trim(), 'loot');
+      const tl   = traitLog(h);
+      const item = pick(LOOT_NAMES);
+      const article = /^[AEIOU]/i.test(item) ? 'an' : 'a';
+      addLog(`${firstName(h)} found ${article} ${item}${tl ? `, ${tl}.` : '!'}`, 'loot');
     }
     const target = W.enemies.find(e => e.hp > 0 && !e.engagedBy);
     const stormEngageMult = W.stormActive ? STORM_ENGAGE_MULT : 1;
@@ -636,7 +638,7 @@ function updateHero(h) {
         // Reckless heroes rarely flee even when hurt; cowardly flee more
         if (fleeRoll < 0.6 + fleeMod) {
           h.fleeCount++;
-          addLog(`${firstName(h)} flees from ${h.target.name}!`, 'explore');
+          addLog(`${firstName(h)} flees from ${h.target.name}!`, 'flee');
           if (h.target) h.target.engagedBy = null;
           h.state = 'flee'; h.target = null; h.stateTimer = 20 + rng(15);
         }
