@@ -348,6 +348,14 @@
     #browse-body { display: none; padding: 16px 20px; }
     #browse-body.open { display: block; }
 
+    /* ── World viewer label ── */
+    #world-viewer-label {
+      font-size: 9px; letter-spacing: 2px; color: var(--purple-dim);
+      text-transform: uppercase; text-align: center; padding: 4px 0 2px;
+      min-height: 16px; transition: color 0.4s;
+    }
+    #world-viewer-label.active { color: var(--purple); }
+
     /* ── Mobile ── */
     @media (max-width: 700px) {
       body { padding: 0 0 40px; }
@@ -365,6 +373,24 @@
       #threats-section { border-right: none; border-bottom: 1px solid var(--border2); }
       .detail-body { grid-template-columns: 1fr; }
       #my-hero-banner { padding: 10px 14px; }
+      /* Spotlight card — stack portrait above text on small screens */
+      .spotlight-inner { flex-direction: column; text-align: center; gap: 10px; padding: 12px; }
+      .spotlight-portrait { width: 64px; height: 64px; margin: 0 auto; }
+      .spotlight-cta { width: 100%; text-align: center; padding: 8px; }
+      .spotlight-dismiss { top: 8px; right: 8px; }
+      /* Hero cards grid — 1 col below 480px */
+      #heroes-grid { grid-template-columns: 1fr; }
+      /* Era bar text shorter on tiny screens */
+      #era-label { font-size: 9px; letter-spacing: 1px; }
+      /* Storm badge — smaller */
+      #storm-badge { font-size: 9px; padding: 1px 5px; }
+      /* Milestone banner — full padding on mobile */
+      #milestone-banner { padding: 12px 40px 12px 16px; }
+      #milestone-banner .ms-msg { font-size: 11px; }
+      /* Leaderboard rows on mobile — compress */
+      .lb-port { width: 26px; height: 26px; }
+      .lb-name { font-size: 11px; }
+      .lb-sub  { display: none; }
     }
 
     /* ── Main layout: heroes full-width top, then 2-col bottom ── */
@@ -1026,6 +1052,8 @@
     <div class="pulse-stat"><span class="pulse-val" id="pulse-combat" style="color:#e05555;">—</span><span class="pulse-lbl">In Combat</span></div>
     <div class="pulse-stat"><span class="pulse-val" id="pulse-viewers">—</span><span class="pulse-lbl">Watching</span></div>
   </div>
+  <!-- World viewer influence label — visible when ≥5 viewers -->
+  <div id="world-viewer-label"></div>
 
   <!-- Pinned hero banner (owner only) -->
   <a id="my-hero-banner" href="#">
@@ -1421,6 +1449,18 @@
     // Keep browse count label current
     const browseCount = el('browse-count');
     if (browseCount && W.heroes) browseCount.textContent = `(${W.heroes.length})`;
+    // World viewer influence label
+    const wvLabel = el('world-viewer-label');
+    if (wvLabel) {
+      const label = W.worldViewerLabel;
+      if (label) {
+        wvLabel.textContent = `✦ ${label}`;
+        wvLabel.classList.add('active');
+      } else {
+        wvLabel.textContent = '';
+        wvLabel.classList.remove('active');
+      }
+    }
   }
 
   // ── Pinned hero banner ────────────────────────────────────

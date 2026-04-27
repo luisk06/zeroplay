@@ -6,6 +6,38 @@ const crypto  = require('crypto');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Rate limiting — simple in-memory token bucket per IP
+//  Limits: public mutation endpoints → 20 req/min; admin → 60 req/min
+// ─────────────────────────────────────────────────────────────────────────────
+const _rateBuckets = new Map();   // ip → { count, resetAt }
+
+function makeRateLimiter(maxPerMin) {
+  return function rateLimiter(req, res, next) {
+    const ip  = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    let bucket = _rateBuckets.get(ip);
+    if (!bucket || now >= bucket.resetAt) {
+      bucket = { count: 0, resetAt: now + 60000 };
+      _rateBuckets.set(ip, bucket);
+    }
+    bucket.count++;
+    if (bucket.count > maxPerMin) {
+      return res.status(429).json({ error: 'Too many requests — slow down.' });
+    }
+    next();
+  };
+}
+
+// Clean up stale buckets every 2 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, b] of _rateBuckets) { if (now >= b.resetAt) _rateBuckets.delete(ip); }
+}, 120000);
+
+const publicRateLimit = makeRateLimiter(20);   // 20/min for claim/hero write endpoints
+const adminRateLimit  = makeRateLimiter(60);   // 60/min for admin (human-operated)
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -51,7 +83,10 @@ function requireAdmin(req, res, next) {
   const [type, encoded] = auth.split(' ');
   if (type === 'Basic' && encoded) {
     const [user, pass] = Buffer.from(encoded, 'base64').toString().split(':');
-    if (user === ADMIN_USER && pass === ADMIN_PASS) return next();
+    if (user === ADMIN_USER && pass === ADMIN_PASS) {
+      // Apply admin rate limit after auth passes
+      return adminRateLimit(req, res, next);
+    }
   }
   res.setHeader('WWW-Authenticate', 'Basic realm="Gothic RPG Admin"');
   res.status(401).send('Unauthorized');
@@ -64,7 +99,7 @@ const HERO_COLORS  = ['#7060d0','#d060a0','#60a0d0','#d0a060','#60d090'];
 const HERO_NAMES   = ['Aldric','Mira','Corvus','Seraphel','Draven','Lirien','Varoth','Elyndra'];
 const HERO_TITLES  = ['the Bold','the Cursed','Darkheart','Ironsoul','Ashborne'];
 const ENEMY_NAMES  = ['Skeleton','Ghoul','Spider','Shade','Golem','Spectre','Troll'];
-const HERO_IMAGES  = ['hero-red.png','hero-blue.png','hero-green.png','hero-purple.png'];
+const HERO_IMAGES  = ['hero-red.webp','hero-blue.webp','hero-green.webp','hero-purple.webp'];
 const ENEMY_STATS  = {
   Skeleton: { hp:[22,34],  atk:[2,3], xp:[4,7],   tier:1 },
   Spider:   { hp:[26,38],  atk:[2,4], xp:[6,9],   tier:1 },
@@ -241,6 +276,9 @@ function serializeWorld(w) {
       mood: h.mood || 'resolute', moodText: h.moodText || '',
       bornYear: h.bornYear || 1,
       isMock: h.isMock || false,
+      forsaken: h.forsaken || false,
+      lastActiveDay: h.lastActiveDay || null,
+      presenceHistory: h.presenceHistory || [],
     })),
     enemies: w.enemies.map(e => ({
       id:e.id, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,
@@ -289,6 +327,8 @@ function liveHero(h) {
     heroAge: age,
     isAged: age >= HERO_AGE_THRESHOLD,
     isMock: h.isMock || false,
+    forsaken: h.forsaken || false,
+    presenceHistory: h.presenceHistory || [],
   };
 }
 
@@ -297,6 +337,7 @@ function liveSnapshot() {
     tick:W.tick, year:W.year, era:era(),
     totalKills:W.totalKills, totalDeaths:W.totalDeaths, totalLoot:W.totalLoot, totalBattles:W.totalBattles,
     speed:simSpeed, paused:simPaused, viewers: clients.size,
+    worldViewerLabel: worldViewerMult().label,
     worldFirsts: W.worldFirsts || {},
     stormActive: W.stormActive || false,
     heroes: W.heroes.map(h => {
@@ -592,7 +633,15 @@ function getPresenceTier(presence) {
 }
 
 // Called every second — ticks presence up or down based on live viewer count
+// Also maintains a 20-point presence history array for the sparkline.
+const PRESENCE_HISTORY_LEN = 20;
+// Sample every 5 seconds to get ~100s of history in 20 points
+let _presenceHistoryTick = 0;
+
 function tickPresence() {
+  _presenceHistoryTick++;
+  const sampleNow = _presenceHistoryTick % 5 === 0;
+
   for (const hero of W.heroes) {
     const viewers = heroViewerCount(hero.name);
     const prevPresence = hero.presence || 0;
@@ -605,20 +654,31 @@ function tickPresence() {
     }
     // Check Exalted milestone when crossing 90
     if (prevPresence < 90 && hero.presence >= 90) checkMilestones(hero);
+
+    // Append to sparkline history every 5s
+    if (sampleNow) {
+      if (!hero.presenceHistory) hero.presenceHistory = [];
+      hero.presenceHistory.push(Math.round(hero.presence));
+      if (hero.presenceHistory.length > PRESENCE_HISTORY_LEN) {
+        hero.presenceHistory.shift();
+      }
+    }
   }
 }
 setInterval(tickPresence, 1000);
 
-// Apply presence-based ATK bonus. Called in updateHero before damage calc.
+// Apply presence-based ATK bonus, multiplied by world-viewer crowd energy.
 function presenceAtk(hero) {
-  const tier = getPresenceTier(hero.presence);
-  return Math.round(hero.atk * tier.atkMult);
+  const tier   = getPresenceTier(hero.presence);
+  const wvMult = worldViewerMult().atkMult;
+  return Math.round(hero.atk * tier.atkMult * wvMult);
 }
 
-// Apply presence-based XP bonus. Called when XP is awarded.
+// Apply presence-based XP bonus, multiplied by world-viewer crowd energy.
 function presenceXp(hero, baseXp) {
-  const tier = getPresenceTier(hero.presence);
-  return Math.round(baseXp * tier.xpMult);
+  const tier   = getPresenceTier(hero.presence);
+  const wvMult = worldViewerMult().xpMult;
+  return Math.round(baseXp * tier.xpMult * wvMult);
 }
 
 // Presence-based out-of-combat healing (called each tick in updateHero)
@@ -658,6 +718,41 @@ function checkMilestones(h) {
   }
 }
 
+// ── World viewer influence ────────────────────────────────────────────────────
+// When many viewers watch the world page, a global "crowd energy" multiplier
+// applies to all heroes' ATK and XP. Thresholds: 5 / 20 / 50+
+// Tier 0 (<5):  no bonus
+// Tier 1 (5+):  ATK ×1.05, XP ×1.05  — "the crowd stirs"
+// Tier 2 (20+): ATK ×1.12, XP ×1.12  — "the crowd roars"
+// Tier 3 (50+): ATK ×1.20, XP ×1.20  — "the realm awakens"
+const WORLD_VIEWER_TIERS = [
+  { min: 50, atkMult: 1.20, xpMult: 1.20, label: 'the realm awakens' },
+  { min: 20, atkMult: 1.12, xpMult: 1.12, label: 'the crowd roars'   },
+  { min:  5, atkMult: 1.05, xpMult: 1.05, label: 'the crowd stirs'   },
+  { min:  0, atkMult: 1.00, xpMult: 1.00, label: null                 },
+];
+let _lastWorldViewerTier = 0;   // tier index when last checked
+
+function worldViewerMult() {
+  const count = clients.size;
+  for (const tier of WORLD_VIEWER_TIERS) {
+    if (count >= tier.min) return tier;
+  }
+  return WORLD_VIEWER_TIERS[WORLD_VIEWER_TIERS.length - 1];
+}
+
+// Called from tick() — checks if world viewer tier changed and logs it
+function tickWorldViewerInfluence() {
+  const tier = worldViewerMult();
+  const newIdx = WORLD_VIEWER_TIERS.indexOf(tier);
+  if (newIdx !== _lastWorldViewerTier && tier.label) {
+    addLog(`${clients.size} souls watch from beyond — ${tier.label}.`, 'explore');
+    _lastWorldViewerTier = newIdx;
+  } else if (newIdx === WORLD_VIEWER_TIERS.length - 1 && _lastWorldViewerTier !== newIdx) {
+    _lastWorldViewerTier = newIdx;   // silent reset when dropping below threshold
+  }
+}
+
 // ── Drama score ───────────────────────────────────────────────────────────────
 // Computed per-hero at broadcast time. Used by the client to spotlight the most
 // narratively compelling hero for first-time visitors.
@@ -673,6 +768,69 @@ function dramascoreOf(h) {
          viewerBonus + moodBonus + ageBonus;
 }
 
+// ── Forsaken / Permadeath enforcement ────────────────────────────────────────
+// Claimed heroes require occasional owner visits to stay alive.
+// The owner's presence is tracked via lastActiveDay (set on any auth'd API call).
+//
+// Timeline:
+//   Day 1–3 of inactivity: hero fights on normally
+//   Day 3:   hero enters 'forsaken' state — warning broadcast to all viewers
+//   Day 6:   hero is permanently removed (permadeath) — final broadcast
+//
+// Unclaimed heroes are never forsaken.
+// Mock heroes are never forsaken.
+const FORSAKEN_WARN_DAYS   = 3;
+const FORSAKEN_REMOVE_DAYS = 6;
+
+function daysBetween(stampA, stampB) {
+  if (!stampA || !stampB) return 0;
+  const parseStamp = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m, d); };
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.floor((parseStamp(stampB) - parseStamp(stampA)) / msPerDay);
+}
+
+function tickForsaken() {
+  const today = utcDayStamp();
+  for (const h of [...W.heroes]) {
+    if (!h.claimToken) continue;   // unclaimed — skip
+    if (h.isMock)      continue;   // mock owner — skip
+    if (h.retired)     continue;
+
+    // lastActiveDay is set by the owner whenever they visit the hero page or invoke
+    const lastActive = h.lastActiveDay || h.bornYear ? null : today;
+    if (!h.lastActiveDay) {
+      // First time — set it now so the clock starts
+      h.lastActiveDay = today;
+      continue;
+    }
+
+    const absent = daysBetween(h.lastActiveDay, today);
+
+    if (absent >= FORSAKEN_REMOVE_DAYS) {
+      // Permadeath — remove the hero
+      addLog(`${firstName(h)} has been forsaken by their keeper. They fade into the dark.`, 'death');
+      const deathMsg = `data: ${JSON.stringify({ type:'forsaken-removed', heroName: h.name, year: W.year })}\n\n`;
+      for (const res of clients) { try { res.write(deathMsg); } catch(e) { clients.delete(res); } }
+      broadcastHero(h.name, { type:'forsaken-removed', heroName: h.name });
+      W.heroes = W.heroes.filter(hh => hh !== h);
+      W.totalDeaths++;
+    } else if (absent >= FORSAKEN_WARN_DAYS && !h.forsaken) {
+      // First warning
+      h.forsaken = true;
+      addLog(`${firstName(h)} grows pale — their keeper has not been seen for ${absent} days.`, 'death');
+      const warnMsg = `data: ${JSON.stringify({ type:'forsaken-warn', heroName: h.name, absentDays: absent, year: W.year })}\n\n`;
+      for (const res of clients) { try { res.write(warnMsg); } catch(e) { clients.delete(res); } }
+      broadcastHero(h.name, { type:'forsaken-warn', heroName: h.name, absentDays: absent });
+    } else if (absent < FORSAKEN_WARN_DAYS && h.forsaken) {
+      // Owner returned — clear forsaken flag
+      h.forsaken = false;
+      addLog(`${firstName(h)}'s keeper has returned. The shadow lifts.`, 'explore');
+    }
+  }
+}
+// Run forsaken check once per real-world minute (not per tick — keeps it stable)
+setInterval(tickForsaken, 60 * 1000);
+
 // ── Invoke ability ────────────────────────────────────────────────────────────
 // Owner can spend 40 Presence for a guaranteed 3× crit on the next hit.
 // Tracked per-hero as `invokeReady` (bool) and `invokePending` (bool).
@@ -686,7 +844,7 @@ function canInvoke(hero) {
          !!hero.claimToken;
 }
 
-app.post('/api/hero/invoke', (req, res) => {
+app.post('/api/hero/invoke', publicRateLimit, (req, res) => {
   const { heroName, claimToken } = req.body;
   const hero = findHeroBySlugOrName(heroName);
   if (!hero || !hero.claimToken) return res.status(404).json({ error: 'Hero not found' });
@@ -695,6 +853,8 @@ app.post('/api/hero/invoke', (req, res) => {
   hero.presence = Math.max(0, (hero.presence || 0) - INVOKE_COST);
   hero.invokePending = true;
   hero.invokeUsedDay = utcDayStamp();
+  hero.lastActiveDay = utcDayStamp();   // owner is active — reset forsaken clock
+  hero.forsaken = false;
   res.json({ ok: true, presence: hero.presence });
 });
 
@@ -766,6 +926,7 @@ function tickEncounters() {
 function tick() {
   W.tick++;
   tickStorm();
+  tickWorldViewerInfluence();
   for (const h of [...W.heroes]) updateHero(h);
   if (W.tick % ENCOUNTER_CHECK_TICKS === 0) tickEncounters();
   if (W.tick % 80  === 0) repopulate();
@@ -851,7 +1012,13 @@ app.get('/api/stream', (req, res) => {
   clients.add(res);
   res.write(`data: ${JSON.stringify({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] })}\n\n`);
 
+  // Keep-alive ping every 25s — prevents Railway / proxies from killing idle connections
+  const heartbeat = setInterval(() => {
+    try { res.write(': ping\n\n'); } catch(e) { clearInterval(heartbeat); clients.delete(res); }
+  }, 25000);
+
   req.on('close', () => {
+    clearInterval(heartbeat);
     clients.delete(res);
     broadcast({ type:'viewers', viewers: clients.size });
   });
@@ -880,7 +1047,13 @@ app.get('/api/stream/hero', (req, res) => {
   // Broadcast updated viewer count to all hero-page viewers
   broadcastHero(heroName, { type:'viewers', viewers: heroViewerCount(heroName) });
 
+  // Keep-alive ping every 25s — prevents Railway / proxies from killing idle connections
+  const heartbeatHero = setInterval(() => {
+    try { res.write(': ping\n\n'); } catch(e) { clearInterval(heartbeatHero); const s = heroClients.get(heroName); if (s) s.delete(res); }
+  }, 25000);
+
   req.on('close', () => {
+    clearInterval(heartbeatHero);
     const set = heroClients.get(heroName);
     if (set) { set.delete(res); if (set.size === 0) heroClients.delete(heroName); }
     broadcastHero(heroName, { type:'viewers', viewers: heroViewerCount(heroName) });
@@ -921,7 +1094,7 @@ app.post('/api/reset', async (req, res) => {
 const JOIN_COOLDOWN_MS = 30000;
 let lastJoinTime = 0;
 
-app.post('/api/join', (req, res) => {
+app.post('/api/join', publicRateLimit, (req, res) => {
   const now = Date.now();
   if (now - lastJoinTime < JOIN_COOLDOWN_MS) {
     return res.status(429).json({ error: 'A hero just entered. Wait a moment before another joins.' });
@@ -967,17 +1140,20 @@ app.post('/api/join', (req, res) => {
 //  Hero ownership endpoints (token-gated, no auth required)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Verify a claim token — returns hero name if valid
-app.post('/api/hero/verify', (req, res) => {
+// Verify a claim token — returns hero name if valid, also touches lastActiveDay
+app.post('/api/hero/verify', publicRateLimit, (req, res) => {
   const { heroName, claimToken } = req.body;
   const hero = findHeroBySlugOrName(heroName);
   if (!hero || !hero.claimToken) return res.status(404).json({ error: 'Hero not found' });
   if (hero.claimToken !== claimToken) return res.status(403).json({ error: 'Invalid token' });
-  res.json({ ok:true, heroName: hero.name, motto: hero.motto || '' });
+  // Owner is actively checking in — reset forsaken clock
+  hero.lastActiveDay = utcDayStamp();
+  hero.forsaken = false;
+  res.json({ ok:true, heroName: hero.name, motto: hero.motto || '', forsaken: false });
 });
 
 // Set motto (owner only)
-app.post('/api/hero/motto', (req, res) => {
+app.post('/api/hero/motto', publicRateLimit, (req, res) => {
   const { heroName, claimToken, motto } = req.body;
   const hero = findHeroBySlugOrName(heroName);
   if (!hero || !hero.claimToken) return res.status(404).json({ error: 'Hero not found' });
@@ -988,7 +1164,7 @@ app.post('/api/hero/motto', (req, res) => {
 });
 
 // Rename hero (owner only) — name must be unique, max 32 chars
-app.post('/api/hero/rename', (req, res) => {
+app.post('/api/hero/rename', publicRateLimit, (req, res) => {
   const { heroName, claimToken, newName } = req.body;
   const hero = findHeroBySlugOrName(heroName);
   if (!hero || !hero.claimToken) return res.status(404).json({ error: 'Hero not found' });
@@ -1015,7 +1191,7 @@ app.post('/api/hero/rename', (req, res) => {
 });
 
 // Retire hero (owner only) — graceful exit, marks hero as retired
-app.post('/api/hero/retire', (req, res) => {
+app.post('/api/hero/retire', publicRateLimit, (req, res) => {
   const { heroName, claimToken } = req.body;
   const hero = findHeroBySlugOrName(heroName);
   if (!hero || !hero.claimToken) return res.status(404).json({ error: 'Hero not found' });
@@ -1395,6 +1571,9 @@ async function boot() {
       mood: h.mood || 'resolute', moodText: h.moodText || MOODS.resolute.desc,
       bornYear: h.bornYear || 1,
       isMock: h.isMock || false,
+      forsaken: h.forsaken || false,
+      lastActiveDay: h.lastActiveDay || null,
+      presenceHistory: h.presenceHistory || [],
     }));
     W.enemies = (saved.enemies || []).map(e => ({
       id:enemyIdCounter++, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,

@@ -118,6 +118,41 @@
     .two-col { display:grid; grid-template-columns:1fr 1fr; gap:28px; margin-bottom:24px; }
     @media(max-width:600px) { .two-col { grid-template-columns:1fr; } .stat-grid { grid-template-columns:repeat(2,1fr); } }
 
+    /* ── Presence sparkline ── */
+    #presence-sparkline-wrap { margin-top:10px; }
+    #presence-sparkline-label { font-size:9px; letter-spacing:2px; color:var(--text-dim); text-transform:uppercase; margin-bottom:4px; }
+    #presence-sparkline { display:block; width:100%; height:36px; }
+
+    /* ── Forsaken warning strip ── */
+    #forsaken-strip {
+      display:none; background:#1a0008; border:1px solid #7a1a2a; color:#e06070;
+      font-size:11px; letter-spacing:1px; padding:10px 14px; margin-bottom:16px; text-align:center;
+    }
+    #forsaken-strip.show { display:block; }
+
+    /* ── Mobile ── */
+    @media (max-width: 600px) {
+      #hero-splash { height: 240px; }
+      #hero-title  { font-size: 20px; }
+      #hero-subtitle { font-size: 11px; }
+      #splash-overlay { padding: 18px 16px; }
+      #back-link, #viewers-badge { font-size: 9px; padding: 4px 9px; }
+      #hero-body { padding: 0 12px 48px; }
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+      .stat-box .sv { font-size: 18px; }
+      .combat-arena { flex-direction: column; min-height: auto; }
+      .arena-fighter img { height: 140px; }
+      .arena-vs { width: 100%; height: 28px; flex-direction: row; border-left: none; border-right: none; border-top: 1px solid #2a0a40; border-bottom: 1px solid #2a0a40; }
+      .arena-vs span { writing-mode: horizontal-tb; letter-spacing: 6px; }
+      .op-row { flex-wrap: wrap; }
+      .op-input { min-width: 0; }
+      #share-section { flex-direction: column; align-items: stretch; }
+      #share-url { min-width: 0; }
+      #trait-row { gap: 5px; }
+      .trait-chip { font-size: 8px; padding: 2px 7px; }
+      #presence-sparkline { height: 28px; }
+    }
+
     /* Not found */
     #not-found { text-align:center; padding:80px 24px; }
     #not-found h2 { font-size:16px; color:var(--red); letter-spacing:3px; margin-bottom:12px; font-weight:normal; }
@@ -349,7 +384,25 @@
       </div>
       <div id="viewer-join-msg"></div>
       <button id="invoke-btn" onclick="invokePresence()">✦ Invoke Presence — Channel the Watchers</button>
+      <!-- Presence history sparkline -->
+      <div id="presence-sparkline-wrap">
+        <div id="presence-sparkline-label">Presence History</div>
+        <svg id="presence-sparkline" viewBox="0 0 200 36" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          <line x1="0" y1="32" x2="200" y2="32" stroke="#2a1040" stroke-width="0.5"/>
+          <polyline id="sparkline-line" points="" fill="none" stroke="#7a4a9a" stroke-width="1.5" stroke-linejoin="round"/>
+          <polyline id="sparkline-area" points="" fill="url(#spark-grad)" opacity="0.3"/>
+          <defs>
+            <linearGradient id="spark-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#9a60c8"/>
+              <stop offset="100%" stop-color="#9a60c800"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
     </div>
+
+    <!-- Forsaken warning strip -->
+    <div id="forsaken-strip">⚠ Your keeper has not been seen. Return or this hero will be lost.</div>
 
     <!-- Arena (only when hunting) -->
     <div id="arena-wrap" style="display:none;"></div>
@@ -546,8 +599,11 @@
     document.getElementById('bar-xp').style.width = Math.round(xpPct*100) + '%';
     document.getElementById('bar-xp-val').textContent = `${hero.xp} / ${hero.level*15}`;
 
-    // Presence panel
+    // Presence panel + sparkline + forsaken strip
     renderPresence(hero);
+    renderSparkline(hero.presenceHistory || []);
+    const forsakenStrip = document.getElementById('forsaken-strip');
+    if (forsakenStrip) forsakenStrip.classList.toggle('show', !!hero.forsaken);
 
     // Stats — show effective ATK if presence bonus active
     const atkEl = document.getElementById('s-atk');
@@ -725,6 +781,23 @@
   }
 
   const INVOKE_COST_CLIENT = 40;
+
+  // ── Presence sparkline ──────────────────────────────────────
+  function renderSparkline(history) {
+    const line = document.getElementById('sparkline-line');
+    const area = document.getElementById('sparkline-area');
+    if (!line || !area || !history || history.length < 2) return;
+    const W = 200, H = 34, pad = 2;
+    const max = 100;
+    const pts = history.map((v, i) => {
+      const x = pad + (i / (history.length - 1)) * (W - pad * 2);
+      const y = H - pad - ((v / max) * (H - pad * 2));
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const areaPoints = `0,${H} ` + pts.join(' ') + ` ${W},${H}`;
+    line.setAttribute('points', pts.join(' '));
+    area.setAttribute('points', areaPoints);
+  }
 
   // Show a temporary message in the presence panel
   let _vjTimer = null;
