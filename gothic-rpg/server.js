@@ -118,15 +118,16 @@ const WOUNDED_RECOVERY_TICKS  = 300;
 
 // ── Hero Personality Traits ───────────────────────────────────────────────────
 // Each hero gets 2 traits at spawn that permanently colour their behaviour.
+// `desc` is shown in the claim ceremony overlay.
 const TRAITS = {
-  reckless:   { label:'Reckless',   engage: +0.03,  flee: -0.08,  loot: 0,     xp: 0,    log: ['charges forward heedlessly','hurls themselves at the foe'] },
-  cautious:   { label:'Cautious',   engage: -0.02,  flee: +0.06,  loot: 0,     xp: 0,    log: ['watches from the shadows first','edges forward warily'] },
-  greedy:     { label:'Greedy',     engage: 0,      flee: 0,      loot:+0.003, xp: 0,    log: ['rummages through the ruins','pockets everything in reach'] },
-  bloodthirsty:{ label:'Bloodthirsty', engage:+0.02, flee:-0.05, loot: 0,    xp:+0.10, log: ['thirsts for another kill','fights with savage relish'] },
-  cowardly:   { label:'Cowardly',   engage: -0.03,  flee: +0.10,  loot: 0,     xp:-0.05, log: ['flinches at the sight of the enemy','hesitates at the threshold'] },
-  tenacious:  { label:'Tenacious',  engage: +0.01,  flee: -0.06,  loot: 0,     xp:+0.05, log: ['refuses to yield','grits their teeth and presses on'] },
-  scholarly:  { label:'Scholarly',  engage: 0,      flee: 0,      loot:+0.002, xp:+0.15, log: ['studies the creature\'s weaknesses','recites the old battle-lore'] },
-  cursed:     { label:'Cursed',     engage: +0.02,  flee: 0,      loot:-0.001, xp: 0,    log: ['is drawn toward danger by some dark compulsion','moves as if guided by an unseen hand'] },
+  reckless:    { label:'Reckless',     desc:'Charges without hesitation. Fights more, flees less.',        engage: +0.03,  flee: -0.08,  loot: 0,     xp: 0,    log: ['charges forward heedlessly','hurls themselves at the foe'] },
+  cautious:    { label:'Cautious',     desc:'Watches before striking. Survives by knowing when to run.',   engage: -0.02,  flee: +0.06,  loot: 0,     xp: 0,    log: ['watches from the shadows first','edges forward warily'] },
+  greedy:      { label:'Greedy',       desc:'Eyes always on the prize. Finds more loot than most.',        engage: 0,      flee: 0,      loot:+0.003, xp: 0,    log: ['rummages through the ruins','pockets everything in reach'] },
+  bloodthirsty:{ label:'Bloodthirsty', desc:'Craves the kill. Earns more from every slain foe.',           engage: +0.02,  flee: -0.05,  loot: 0,     xp:+0.10, log: ['thirsts for another kill','fights with savage relish'] },
+  cowardly:    { label:'Cowardly',     desc:'Fear is a survival tool. Retreats early, but stays alive.',   engage: -0.03,  flee: +0.10,  loot: 0,     xp:-0.05, log: ['flinches at the sight of the enemy','hesitates at the threshold'] },
+  tenacious:   { label:'Tenacious',    desc:'Refuses to yield. Holds the line when others would break.',   engage: +0.01,  flee: -0.06,  loot: 0,     xp:+0.05, log: ['refuses to yield','grits their teeth and presses on'] },
+  scholarly:   { label:'Scholarly',    desc:'Knowledge is power. Learns faster and finds hidden things.',  engage: 0,      flee: 0,      loot:+0.002, xp:+0.15, log: ['studies the creature\'s weaknesses','recites the old battle-lore'] },
+  cursed:      { label:'Cursed',       desc:'Something draws them toward danger. They cannot explain it.',  engage: +0.02,  flee: 0,      loot:-0.001, xp: 0,    log: ['is drawn toward danger by some dark compulsion','moves as if guided by an unseen hand'] },
 };
 const TRAIT_KEYS = Object.keys(TRAITS);
 
@@ -1094,6 +1095,101 @@ app.post('/api/reset', async (req, res) => {
 const JOIN_COOLDOWN_MS = 30000;
 let lastJoinTime = 0;
 
+// ── Claim Ceremony — hero preview ─────────────────────────────────────────────
+// GET /api/join/preview generates a candidate hero without adding them to the
+// world. The candidate is held in memory for up to 5 minutes.
+// POST /api/join with the previewToken spawns that exact hero.
+//
+// Fate lines: one-sentence summary of the hero's destiny based on trait combo.
+const FATE_LINES = [
+  (traits) => {
+    if (traits.includes('reckless') && traits.includes('bloodthirsty'))
+      return 'A force of pure aggression. Glory or death — nothing in between.';
+    if (traits.includes('scholarly') && traits.includes('cautious'))
+      return 'Patient, observant, precise. Knowledge will be their greatest weapon.';
+    if (traits.includes('greedy') && traits.includes('tenacious'))
+      return 'They will not stop until every ruin has been stripped bare.';
+    if (traits.includes('cursed') && traits.includes('reckless'))
+      return 'Something unseen pulls them toward every blade. They have stopped asking why.';
+    if (traits.includes('cowardly') && traits.includes('scholarly'))
+      return 'Fear sharpens the mind. They will outlast every brawler in this world.';
+    if (traits.includes('cursed'))
+      return 'A dark pull guides their steps. The world notices them in ways it should not.';
+    if (traits.includes('tenacious'))
+      return 'They will fall. They will rise. They will keep going.';
+    if (traits.includes('bloodthirsty'))
+      return 'Every kill feeds something deeper. The world will remember this name.';
+    if (traits.includes('scholarly'))
+      return 'They read the world like a text. Every battle is a lesson.';
+    if (traits.includes('greedy'))
+      return 'Loot is the only god they worship. The ruins will not disappoint.';
+    return 'Their fate is unwritten. All paths remain open.';
+  }
+];
+
+function buildFateLine(traits) {
+  return FATE_LINES[0](traits);
+}
+
+// Preview candidates: Map<previewToken, { candidate, expiresAt }>
+const _joinPreviews = new Map();
+const JOIN_PREVIEW_TTL_MS = 5 * 60 * 1000;  // 5 minutes
+
+// Clean up expired previews every 2 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [tok, p] of _joinPreviews) {
+    if (now >= p.expiresAt) _joinPreviews.delete(tok);
+  }
+}, 120000);
+
+app.get('/api/join/preview', publicRateLimit, (req, res) => {
+  if (W.heroes.length >= 8) {
+    return res.status(400).json({ error: 'The world is full. Wait for a hero to fall before joining.' });
+  }
+
+  // Build a candidate hero (not added to world yet)
+  const usedNames    = new Set(W.heroes.map(h => h.name));
+  const availFirsts  = HERO_NAMES.filter(n => !W.heroes.some(h => h.name.startsWith(n)));
+  const fn           = availFirsts.length ? pick(availFirsts) : pick(HERO_NAMES);
+  const title        = pick(HERO_TITLES);
+  const heroName     = `${fn} ${title}`;
+
+  const usedImages   = new Set(W.heroes.map(h => h.image));
+  const availImages  = HERO_IMAGES.filter(i => !usedImages.has(i));
+  const image        = availImages.length ? pick(availImages) : pick(HERO_IMAGES);
+
+  const traits       = pickTraits();
+  const mood         = 'resolute';
+  const baseAtk      = 3 + rng(4);
+
+  const candidate = { heroName, image, traits, mood, baseAtk };
+  const previewToken = crypto.randomUUID();
+  _joinPreviews.set(previewToken, { candidate, expiresAt: Date.now() + JOIN_PREVIEW_TTL_MS });
+
+  // Build trait objects for display
+  const traitObjs = traits.map(k => ({
+    key: k,
+    label: TRAITS[k]?.label || k,
+    desc:  TRAITS[k]?.desc  || '',
+  }));
+
+  const moodObj = MOODS[mood] || MOODS.resolute;
+
+  res.json({
+    ok: true,
+    previewToken,
+    heroName,
+    image,
+    traits: traitObjs,
+    mood,
+    moodLabel: moodObj.label,
+    moodEmoji: moodObj.emoji,
+    moodDesc:  moodObj.desc,
+    fateLine:  buildFateLine(traits),
+  });
+});
+
 app.post('/api/join', publicRateLimit, (req, res) => {
   const now = Date.now();
   if (now - lastJoinTime < JOIN_COOLDOWN_MS) {
@@ -1103,19 +1199,30 @@ app.post('/api/join', publicRateLimit, (req, res) => {
     return res.status(400).json({ error: 'The world is full. Wait for a hero to fall before joining.' });
   }
 
-  // Assign a unique name not already in use
-  const usedNames = new Set(W.heroes.map(h => h.name));
-  const availFirstNames = HERO_NAMES.filter(n => !W.heroes.some(h => h.name.startsWith(n)));
-  const firstName = availFirstNames.length ? pick(availFirstNames) : pick(HERO_NAMES);
-  const title     = pick(HERO_TITLES);
-  const heroName  = `${firstName} ${title}`;
+  // If a previewToken was provided, use the previewed candidate
+  const { previewToken } = req.body || {};
+  let heroName, image, traits, baseAtk;
 
-  // Assign unique image
-  const usedImages  = new Set(W.heroes.map(h => h.image));
-  const availImages = HERO_IMAGES.filter(i => !usedImages.has(i));
-  const image       = availImages.length ? pick(availImages) : pick(HERO_IMAGES);
+  if (previewToken) {
+    const preview = _joinPreviews.get(previewToken);
+    if (!preview || Date.now() >= preview.expiresAt) {
+      return res.status(400).json({ error: 'Preview expired — please start the ceremony again.' });
+    }
+    _joinPreviews.delete(previewToken);  // single-use
+    ({ heroName, image, traits, baseAtk } = preview.candidate);
+  } else {
+    // Fallback: generate fresh (for API / admin use without ceremony)
+    const availFirsts = HERO_NAMES.filter(n => !W.heroes.some(h => h.name.startsWith(n)));
+    const fn    = availFirsts.length ? pick(availFirsts) : pick(HERO_NAMES);
+    const title = pick(HERO_TITLES);
+    heroName    = `${fn} ${title}`;
+    const usedImages  = new Set(W.heroes.map(h => h.image));
+    const availImages = HERO_IMAGES.filter(i => !usedImages.has(i));
+    image    = availImages.length ? pick(availImages) : pick(HERO_IMAGES);
+    traits   = pickTraits();
+    baseAtk  = 3 + rng(4);
+  }
 
-  const baseAtk = 3 + rng(4);
   const claimToken = crypto.randomUUID();
   const newHero = {
     name: heroName, hp: 20 + rng(10), maxhp: 30,
@@ -1124,14 +1231,18 @@ app.post('/api/join', publicRateLimit, (req, res) => {
     color: HERO_COLORS[rng(HERO_COLORS.length)],
     state:'explore', target:null, stateTimer: 20,
     isBlonde:false, fleeCount:0, image,
+    traits,
+    mood: 'resolute', moodText: MOODS.resolute.desc,
+    bornYear: W.year || 1,
     claimToken,   // stored plaintext — this is a game, not credentials
     motto: '',
+    lastActiveDay: utcDayStamp(),
   };
 
   W.heroes.push(newHero);
   lastJoinTime = now;
-  addLog(`${firstName} ${title} has joined the world!`, 'explore');
-  broadcast({ type:'state', world: liveSnapshot(), combatEvents:[] });
+  addLog(`${heroName} has entered the world.`, 'explore');
+  broadcast({ type:'state', world: liveSnapshotWithViewers(), combatEvents:[] });
   // Return token ONCE — browser must store it
   res.json({ ok:true, heroName, claimToken });
 });

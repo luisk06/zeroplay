@@ -991,6 +991,123 @@
     .modal-box button.confirm { border-color: #6a1a1a; color: var(--red); }
     .modal-box button:hover { background: #200030; }
     .modal-box button.confirm:hover { background: #1e0808; }
+
+    /* ── Claim Ceremony overlay ── */
+    #ceremony-overlay {
+      display: none;
+      position: fixed; inset: 0; z-index: 500;
+      background: rgba(0,0,0,0.96);
+      align-items: center; justify-content: center;
+      overflow-y: auto;
+    }
+    #ceremony-overlay.show { display: flex; }
+
+    #ceremony-box {
+      width: 100%; max-width: 540px;
+      margin: auto; padding: 0 16px 40px;
+      animation: ceremony-rise 0.45s cubic-bezier(0.22,1,0.36,1) forwards;
+    }
+    @keyframes ceremony-rise {
+      from { opacity: 0; transform: translateY(32px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Portrait full-bleed at top */
+    #ceremony-portrait-wrap {
+      position: relative; width: 100%; height: 300px; overflow: hidden;
+      margin-bottom: 0;
+    }
+    #ceremony-portrait {
+      width: 100%; height: 100%; object-fit: cover; object-position: top center;
+      filter: brightness(0.55) saturate(0.7);
+      display: block;
+    }
+    #ceremony-portrait-gradient {
+      position: absolute; inset: 0;
+      background: linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.96) 100%);
+    }
+    #ceremony-name-over {
+      position: absolute; bottom: 20px; left: 24px; right: 24px;
+    }
+    #ceremony-hero-name {
+      font-size: 26px; color: var(--text-hi); letter-spacing: 3px; line-height: 1.2;
+    }
+    #ceremony-loading {
+      font-size: 12px; color: var(--text-dim); letter-spacing: 2px;
+      padding: 60px 0; text-align: center;
+    }
+
+    /* Body below portrait */
+    #ceremony-body { padding: 20px 24px 0; }
+
+    /* Fate line */
+    #ceremony-fate {
+      font-size: 13px; color: var(--text-mid); letter-spacing: 0.5px;
+      line-height: 1.7; font-style: italic;
+      border-left: 2px solid #4a1870; padding-left: 14px;
+      margin-bottom: 24px;
+    }
+
+    /* Trait cards */
+    #ceremony-traits {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+      margin-bottom: 20px;
+    }
+    .ceremony-trait {
+      background: #0c0012; border: 1px solid #2a1048; padding: 12px 14px;
+    }
+    .ceremony-trait-label {
+      font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--purple); margin-bottom: 5px;
+    }
+    .ceremony-trait-label::before { content: '◈ '; opacity: 0.7; }
+    .ceremony-trait-desc {
+      font-size: 11px; color: var(--text-lo); line-height: 1.55; letter-spacing: 0.3px;
+    }
+
+    /* Mood strip */
+    #ceremony-mood {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 11px; color: var(--text-lo); letter-spacing: 1px;
+      border-top: 1px solid var(--border2); padding-top: 14px;
+      margin-bottom: 28px;
+    }
+    #ceremony-mood-emoji { font-size: 16px; }
+    #ceremony-mood-text span { color: var(--text-mid); }
+
+    /* CTA */
+    #ceremony-bind {
+      width: 100%; padding: 14px;
+      background: #0e0018; border: 1px solid var(--purple-dim);
+      color: var(--text-hi); font-family: 'Courier New', monospace;
+      font-size: 12px; letter-spacing: 3px; text-transform: uppercase;
+      cursor: pointer; transition: background 0.15s, box-shadow 0.2s;
+      box-shadow: 0 0 14px #7a4a9a22;
+      margin-bottom: 12px;
+    }
+    #ceremony-bind:hover:not(:disabled) { background: #1a0030; box-shadow: 0 0 24px #9a60c844; }
+    #ceremony-bind:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+    #ceremony-dismiss {
+      width: 100%; background: none; border: none;
+      color: var(--text-dim); font-family: 'Courier New', monospace;
+      font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+      cursor: pointer; padding: 6px;
+      transition: color 0.12s;
+    }
+    #ceremony-dismiss:hover { color: var(--text-lo); }
+
+    #ceremony-error {
+      font-size: 11px; color: var(--red); letter-spacing: 1px;
+      text-align: center; min-height: 16px; margin-bottom: 10px;
+    }
+
+    @media (max-width: 600px) {
+      #ceremony-portrait-wrap { height: 220px; }
+      #ceremony-hero-name { font-size: 20px; }
+      #ceremony-traits { grid-template-columns: 1fr; }
+      #ceremony-body { padding: 16px 16px 0; }
+    }
   </style>
 </head>
 <body>
@@ -1125,21 +1242,28 @@
   </div>
 </div>
 
-<!-- Join the World modal -->
-<div id="join-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);align-items:center;justify-content:center;z-index:100;">
-  <div class="modal-box" style="border-color:#2a5a18;max-width:360px;">
-    <h2 style="color:#66bb77;letter-spacing:3px;">JOIN THE WORLD</h2>
-    <p style="margin-bottom:18px;">A new soul will enter the realm and take their place among the living heroes.</p>
-    <p style="font-size:12px;color:var(--text-lo);margin-bottom:6px;letter-spacing:1px;">Quick verification — answer to continue:</p>
-    <p id="join-question" style="font-size:16px;color:var(--text-hi);margin-bottom:12px;letter-spacing:1px;"></p>
-    <input id="join-answer" type="number" placeholder="Your answer"
-      style="width:100%;background:#080010;border:1px solid #2a4020;color:var(--text-hi);
-             font-family:'Courier New',monospace;font-size:14px;padding:8px 12px;
-             margin-bottom:16px;outline:none;box-sizing:border-box;">
-    <p id="join-error" style="color:var(--red);font-size:11px;margin-bottom:12px;min-height:16px;letter-spacing:1px;"></p>
-    <div class="btn-row">
-      <button id="join-cancel" style="border-color:var(--border);color:var(--text-mid);">Cancel</button>
-      <button id="join-confirm" style="border-color:#2a5a18;color:#66bb77;">Enter the World</button>
+<!-- Claim Ceremony overlay -->
+<div id="ceremony-overlay">
+  <div id="ceremony-box">
+    <div id="ceremony-portrait-wrap">
+      <div id="ceremony-loading">Summoning a hero from the dark…</div>
+      <img id="ceremony-portrait" src="" alt="" style="display:none;">
+      <div id="ceremony-portrait-gradient"></div>
+      <div id="ceremony-name-over" style="display:none;">
+        <div style="font-size:9px;letter-spacing:3px;color:var(--purple-dim);text-transform:uppercase;margin-bottom:6px;">Your hero</div>
+        <div id="ceremony-hero-name"></div>
+      </div>
+    </div>
+    <div id="ceremony-body" style="display:none;">
+      <div id="ceremony-fate"></div>
+      <div id="ceremony-traits"></div>
+      <div id="ceremony-mood">
+        <span id="ceremony-mood-emoji"></span>
+        <span id="ceremony-mood-text"></span>
+      </div>
+      <div id="ceremony-error"></div>
+      <button id="ceremony-bind" onclick="ceremonyBind()">⚔ Bind your fate</button>
+      <button id="ceremony-dismiss" onclick="ceremonyClear()">Not now — return to the world</button>
     </div>
   </div>
 </div>
@@ -2033,63 +2157,136 @@
   };
 
   // ─────────────────────────────────────────────────────────
-  //  Join the World
+  //  Claim Ceremony
   // ─────────────────────────────────────────────────────────
-  let joinA = 0, joinB = 0, joinCorrect = 0;
+  let _ceremonyPreviewToken = null;
+  let _ceremonyHeroName     = null;
 
-  function openJoinModal() {
-    // Generate a simple math question
-    joinA = Math.floor(Math.random() * 9) + 1;
-    joinB = Math.floor(Math.random() * 9) + 1;
-    joinCorrect = joinA + joinB;
-    document.getElementById('join-question').textContent = `What is ${joinA} + ${joinB}?`;
-    document.getElementById('join-answer').value = '';
-    document.getElementById('join-error').textContent = '';
-    const modal = document.getElementById('join-modal');
-    modal.style.display = 'flex';
-    setTimeout(() => document.getElementById('join-answer').focus(), 80);
-  }
+  async function openJoinModal() {
+    // "Join the World" button click — fetch a preview candidate then show ceremony
+    const overlay = document.getElementById('ceremony-overlay');
+    const portrait = document.getElementById('ceremony-portrait');
+    const loading  = document.getElementById('ceremony-loading');
+    const nameOver = document.getElementById('ceremony-name-over');
+    const body     = document.getElementById('ceremony-body');
 
-  function closeJoinModal() {
-    document.getElementById('join-modal').style.display = 'none';
-  }
+    // Reset to loading state
+    portrait.style.display = 'none';
+    loading.style.display  = 'block';
+    nameOver.style.display = 'none';
+    body.style.display     = 'none';
+    document.getElementById('ceremony-error').textContent = '';
+    _ceremonyPreviewToken = null;
+    _ceremonyHeroName     = null;
 
-  async function submitJoin() {
-    const answer = parseInt(document.getElementById('join-answer').value);
-    if (answer !== joinCorrect) {
-      document.getElementById('join-error').textContent = 'Incorrect — try again.';
-      document.getElementById('join-answer').value = '';
-      document.getElementById('join-answer').focus();
-      // Refresh the question
-      joinA = Math.floor(Math.random() * 9) + 1;
-      joinB = Math.floor(Math.random() * 9) + 1;
-      joinCorrect = joinA + joinB;
-      document.getElementById('join-question').textContent = `What is ${joinA} + ${joinB}?`;
-      return;
-    }
-    closeJoinModal();
+    overlay.classList.add('show');
+
     try {
-      const res  = await fetch('/api/join', { method:'POST', headers:{'Content-Type':'application/json'} });
+      const res  = await fetch('/api/join/preview');
       const data = await res.json();
-      if (!res.ok) {
-        document.getElementById('join-error').textContent = data.error || 'Could not join.';
-        document.getElementById('join-modal').style.display = 'flex';
+
+      if (!res.ok || !data.ok) {
+        loading.textContent = data.error || 'The world cannot accept a new soul right now.';
         return;
       }
-      if (data.ok && data.heroName) {
-        if (data.claimToken) {
-          setClaim(data.heroName, data.claimToken);
-          syncHeroHeaderLink();
-        }
-        showJoinToast(data.heroName, !!data.claimToken);
-      }
-    } catch(e) { /* silent */ }
+
+      _ceremonyPreviewToken = data.previewToken;
+      _ceremonyHeroName     = data.heroName;
+
+      // Populate portrait
+      portrait.src = data.image || '';
+      portrait.style.display = 'block';
+      loading.style.display  = 'none';
+      nameOver.style.display = 'block';
+      document.getElementById('ceremony-hero-name').textContent = data.heroName;
+
+      // Populate traits
+      const traitEl = document.getElementById('ceremony-traits');
+      traitEl.innerHTML = (data.traits || []).map(t =>
+        `<div class="ceremony-trait">
+          <div class="ceremony-trait-label">${t.label}</div>
+          <div class="ceremony-trait-desc">${t.desc}</div>
+        </div>`
+      ).join('');
+
+      // Populate mood
+      document.getElementById('ceremony-mood-emoji').textContent = data.moodEmoji || '⚔';
+      document.getElementById('ceremony-mood-text').innerHTML =
+        `Enters the world <span>${data.moodLabel || 'Resolute'}</span> — ${data.moodDesc || ''}`;
+
+      // Populate fate line
+      document.getElementById('ceremony-fate').textContent = data.fateLine || '';
+
+      body.style.display = 'block';
+      const bindBtn = document.getElementById('ceremony-bind');
+      if (bindBtn) { bindBtn.disabled = false; bindBtn.textContent = '⚔ Bind your fate'; }
+
+    } catch(e) {
+      loading.textContent = 'Could not reach the server. Try again.';
+    }
   }
+
+  function ceremonyClear() {
+    document.getElementById('ceremony-overlay').classList.remove('show');
+    _ceremonyPreviewToken = null;
+    _ceremonyHeroName     = null;
+  }
+
+  async function ceremonyBind() {
+    if (!_ceremonyPreviewToken) return;
+    const bindBtn = document.getElementById('ceremony-bind');
+    const errEl   = document.getElementById('ceremony-error');
+    if (bindBtn) { bindBtn.disabled = true; bindBtn.textContent = 'Entering the world…'; }
+    errEl.textContent = '';
+
+    try {
+      const res  = await fetch('/api/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ previewToken: _ceremonyPreviewToken }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        errEl.textContent = data.error || 'Could not enter the world.';
+        if (bindBtn) { bindBtn.disabled = false; bindBtn.textContent = '⚔ Bind your fate'; }
+        // If preview expired, offer to restart
+        if (res.status === 400 && data.error && data.error.includes('expired')) {
+          errEl.textContent += ' Click below to try again.';
+          ceremonyClear();
+        }
+        return;
+      }
+
+      // Success — store claim and navigate to the hero page
+      if (data.claimToken) {
+        setClaim(data.heroName, data.claimToken);
+        syncHeroHeaderLink();
+      }
+
+      ceremonyClear();
+      showJoinToast(data.heroName, !!data.claimToken);
+
+      // Navigate to the new hero's page after a short beat
+      setTimeout(() => {
+        window.location.href = '/hero?name=' + slugify(data.heroName);
+      }, 900);
+
+    } catch(e) {
+      errEl.textContent = 'Connection error. Try again.';
+      if (bindBtn) { bindBtn.disabled = false; bindBtn.textContent = '⚔ Bind your fate'; }
+    }
+  }
+
+  // Close ceremony on overlay background click (not on the box itself)
+  document.getElementById('ceremony-overlay').addEventListener('click', function(e) {
+    if (e.target === this) ceremonyClear();
+  });
 
   function showJoinToast(name, owned) {
     const t = document.getElementById('join-toast');
     t.innerHTML = owned
-      ? `⚔ <strong>${name}</strong> has entered the world!<br><span style="font-size:10px;opacity:0.7;letter-spacing:0.5px;">★ You are their keeper. Find them in the world.</span>`
+      ? `⚔ <strong>${name}</strong> has entered the world!<br><span style="font-size:10px;opacity:0.7;letter-spacing:0.5px;">★ You are their keeper.</span>`
       : `⚔ ${name} has entered the world!`;
     t.style.display = 'block';
     setTimeout(() => { t.style.display = 'none'; }, 5000);
@@ -2157,10 +2354,7 @@
   document.getElementById('btn-map').onclick  = openMap;
   document.getElementById('map-close').onclick = () => document.getElementById('map-modal').classList.remove('open');
 
-  document.getElementById('btn-join').onclick    = openJoinModal;
-  document.getElementById('join-cancel').onclick = closeJoinModal;
-  document.getElementById('join-confirm').onclick = submitJoin;
-  document.getElementById('join-answer').addEventListener('keydown', e => { if (e.key === 'Enter') submitJoin(); });
+  document.getElementById('btn-join').onclick = openJoinModal;
 
   // ─────────────────────────────────────────────────────────
   //  Map  (D3 + Natural Earth real geography)
