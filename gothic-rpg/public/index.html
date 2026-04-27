@@ -70,6 +70,13 @@
       color: var(--text-mid);
       letter-spacing: 1px;
     }
+    #manifesto {
+      font-size: 9px;
+      color: var(--text-dim);
+      letter-spacing: 1.5px;
+      margin-top: 3px;
+      font-style: italic;
+    }
 
     /* Speed controls */
     #controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -227,6 +234,30 @@
     .feed-new.loot    { animation: feed-flash-loot    1.4s ease-out forwards; }
     .feed-new.death   { animation: feed-flash-death   1.4s ease-out forwards; }
     .feed-new.explore { animation: feed-flash-explore 1.4s ease-out forwards; }
+
+    /* ── Heavyweight feed entries (death + level-up) ── */
+    @keyframes feed-heavy-in { from { opacity:0; transform:translateX(-6px); } to { opacity:1; transform:none; } }
+    .feed-entry.feed-heavy {
+      padding: 10px 10px 10px 12px;
+      margin: 6px 0;
+      border-bottom: none;
+      border-radius: 1px;
+      position: relative;
+    }
+    .feed-entry.feed-heavy::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      border-radius: 1px 0 0 1px;
+    }
+    .feed-entry.death.feed-heavy  { background: #1a0509; border: 1px solid #4a0f18; }
+    .feed-entry.death.feed-heavy::before { background: #cc4444; }
+    .feed-entry.level.feed-heavy  { background: #05100d; border: 1px solid #0f3a28; }
+    .feed-entry.level.feed-heavy::before { background: #4499dd; }
+    .feed-entry.feed-heavy .feed-icon { font-size: 15px; }
+    .feed-entry.feed-heavy .feed-msg  { font-size: 13px; letter-spacing: 0.3px; }
+    .feed-new.feed-heavy { animation: feed-heavy-in 0.3s ease-out forwards; }
 
     /* Leaderboard */
     .lb-row {
@@ -1119,13 +1150,14 @@
     <div id="title-block">
       <h1>Gothic RPG</h1>
       <span id="era-display">Year 1 — Age of Shadow</span>
+      <span id="manifesto">A world that never stops. Watch it. Shape it. Claim a soul.</span>
     </div>
     <div id="controls">
       <button id="btn-pause" title="Pause your view — world keeps running">&#9646;&#9646; Pause View</button>
       <button id="btn-map" style="border-color:#1a3050;color:#5599cc;">◉ Map</button>
       <button id="btn-join" style="border-color:#3a6a20;color:#66bb77;">⚔ Join the World</button>
       <a id="my-hero-link" style="display:none;" href="#"></a>
-      <span id="save-status">loading...</span>
+      <span id="save-status"></span>
       <span id="viewer-count" style="font-size:10px;color:var(--text-lo);letter-spacing:1px;margin-left:6px;"></span>
     </div>
   </div>
@@ -1372,17 +1404,41 @@
     if (_spotlightDismissed) return;
     if (sessionStorage.getItem(_spotlightKey)) return;   // already seen this session
     if (!W || !W.heroes || !W.heroes.length) return;
-    // Pick highest drama-score hero
-    const best = W.heroes.slice().sort((a, b) => (b.dramaScore||0) - (a.dramaScore||0))[0];
+
+    // Drama scoring: prefer endangered/wounded heroes over comfortable top-killers
+    function spotlightScore(h) {
+      let score = (h.dramaScore || 0);
+      const hpPct = h.maxhp > 0 ? h.hp / h.maxhp : 1;
+      // Critically low HP is the most dramatic
+      if (hpPct < 0.2) score += 120;
+      else if (hpPct < 0.4) score += 60;
+      // Wounded state
+      if (h.state === 'wounded') score += 80;
+      // Active combat
+      if (h.state === 'hunt') score += 40;
+      // Fleeing
+      if (h.state === 'flee') score += 30;
+      // Has viewers already watching — interesting
+      if ((h.heroViewers || 0) > 0) score += 20 * (h.heroViewers || 0);
+      // Aged legends are compelling
+      if (h.isAged) score += 25;
+      return score;
+    }
+
+    const best = W.heroes.slice().sort((a, b) => spotlightScore(b) - spotlightScore(a))[0];
     if (!best) return;
     const slug = slugify(best.name);
-    const stateDesc = best.state === 'hunt' ? 'currently in combat' :
-                      best.state === 'wounded' ? 'wounded and recovering' :
-                      best.state === 'flee' ? 'fleeing a battle' : 'exploring the dark';
+    const hpPct = best.maxhp > 0 ? best.hp / best.maxhp : 1;
+    // Build a tension-aware state description
+    const stateDesc = best.state === 'wounded'    ? (hpPct < 0.25 ? 'clinging to life' : 'wounded and barely standing') :
+                      best.state === 'hunt'       ? (hpPct < 0.3  ? 'fighting on the edge of death' : 'locked in combat') :
+                      best.state === 'flee'       ? 'fleeing — one step from the grave' :
+                      'exploring the dark';
     const whyParts = [];
     if (best.kills > 0) whyParts.push(`${best.kills} kills`);
     if ((best.falls||0) > 0) whyParts.push(`${best.falls} falls`);
     if (best.isAged) whyParts.push(`${best.heroAge}-year veteran`);
+    if ((best.heroViewers || 0) > 0) whyParts.push(`${best.heroViewers} watching`);
     const why = `${stateDesc}${whyParts.length ? ' · ' + whyParts.join(' · ') : ''}`;
 
     const card    = document.getElementById('spotlight-card');
@@ -1392,10 +1448,14 @@
     const ctaEl   = document.getElementById('spotlight-cta');
     if (!card || !portEl || !nameEl || !whyEl || !ctaEl) return;
 
+    const isEndangered = hpPct < 0.3 || best.state === 'wounded';
     if (best.image) portEl.src = best.image;
     nameEl.textContent = best.name + (best.isBlonde ? ' ★' : '');
     whyEl.textContent  = why;
     ctaEl.href = `/hero?name=${slug}`;
+    ctaEl.textContent = isEndangered ? 'Watch — they may not survive →' : 'Watch →';
+    ctaEl.style.color = isEndangered ? '#e05555' : '';
+    ctaEl.style.borderColor = isEndangered ? '#5a1515' : '';
     card.classList.add('show');
   }
 
@@ -1573,12 +1633,20 @@
     // Keep browse count label current
     const browseCount = el('browse-count');
     if (browseCount && W.heroes) browseCount.textContent = `(${W.heroes.length})`;
-    // World viewer influence label
+    // World viewer influence label — visible at 1+ viewers
     const wvLabel = el('world-viewer-label');
     if (wvLabel) {
-      const label = W.worldViewerLabel;
+      const viewers = W.viewers || 0;
+      const label   = W.worldViewerLabel;
       if (label) {
+        // Tier active (5+ viewers) — show the tier name
         wvLabel.textContent = `✦ ${label}`;
+        wvLabel.classList.add('active');
+      } else if (viewers >= 1) {
+        // At least one viewer — show a gentle causal nudge
+        wvLabel.textContent = viewers === 1
+          ? '✦ 1 soul watches — the heroes feel it'
+          : `✦ ${viewers} souls watch — presence stirs`;
         wvLabel.classList.add('active');
       } else {
         wvLabel.textContent = '';
@@ -1635,9 +1703,10 @@
     const newKeys = new Set(log.map(l => l.msg + l.t));
 
     el.innerHTML = log.map((l, i) => {
-      const key    = l.msg + l.t;
+      const key       = l.msg + l.t;
       const isNewEntry = isNew && !existingMsgs.includes(key);
-      return `<div class="feed-entry ${l.type}${isNewEntry ? ' feed-new' : ''}" data-key="${key}">
+      const isHeavy   = l.type === 'death' || l.type === 'level';
+      return `<div class="feed-entry ${l.type}${isHeavy ? ' feed-heavy' : ''}${isNewEntry ? ' feed-new' : ''}" data-key="${key}">
         <span class="feed-yr">Yr${l.t}</span>
         <span class="feed-icon">${LOG_ICONS[l.type] || '◈'}</span>
         <span class="feed-msg">${l.msg}</span>
@@ -1663,6 +1732,7 @@
       const portStyle  = tierColor ? `border-color:${tierColor};box-shadow:0 0 10px ${tierColor}44;filter:brightness(1);` : '';
       const tierName   = presence >= 90 ? 'Exalted' : presence >= 60 ? 'Witnessed' : presence >= 30 ? 'Noticed' : '';
       const moodEmoji  = h.moodEmoji || '';
+      const moodColor  = h.mood === 'vengeful' ? '#cc6633' : h.mood === 'triumphant' ? '#c8a840' : h.mood === 'haunted' ? '#8070b0' : h.mood === 'weary' ? '#6a6a8a' : '';
       const traitStr   = (h.traits || []).map(t => t.label || t.key || t).join(' · ');
       const viewers    = h.heroViewers || 0;
       // Vigil dots: up to 5 dots; filled ones = viewers, animated if in combat with viewers
@@ -1679,7 +1749,7 @@
         <span class="lb-rank">${i + 1}</span>
         ${h.image ? `<img class="lb-port" src="${h.image}" alt="${h.name}" style="${portStyle}">` : ''}
         <div class="lb-info">
-          <div class="lb-name ${mine ? 'lb-mine' : ''}">${mine ? '★ ' : ''}${h.name}${inCombat ? '<span class="lb-combat-dot" title="In combat"></span>' : ''}${moodEmoji ? ` <span style="font-size:11px;opacity:0.7;" title="${h.moodLabel||''}">${moodEmoji}</span>` : ''}${vigilDots}</div>
+          <div class="lb-name ${mine ? 'lb-mine' : ''}">${mine ? '★ ' : ''}${h.name}${inCombat ? '<span class="lb-combat-dot" title="In combat"></span>' : ''}${moodEmoji && moodEmoji !== '◈' ? ` <span style="font-size:10px;${moodColor ? `color:${moodColor};` : 'color:var(--text-dim);'}" title="${h.moodLabel||''}">${moodEmoji}</span>` : ''}${vigilDots}</div>
           <div class="lb-sub">${rank.badge} ${rank.name} · Lv ${h.level} · ${stateIcon}${tierName ? ` · <span style="color:${tierColor}">${tierName}</span>` : ''}${traitStr ? ` · <span style="color:var(--text-lo);font-size:9px;">${traitStr}</span>` : ''}</div>
         </div>
         <span class="lb-kills" title="kills">${h.kills}⚔</span>

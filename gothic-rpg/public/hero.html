@@ -151,6 +151,54 @@
       #trait-row { gap: 5px; }
       .trait-chip { font-size: 8px; padding: 2px 7px; }
       #presence-sparkline { height: 28px; }
+      #chronicle-list { max-height: 200px; }
+      .chronicle-entry { font-size: 10px; }
+    }
+
+    /* ── Private Chronicle ── */
+    #private-chronicle {
+      display:none; margin-bottom:28px;
+    }
+    #private-chronicle.owner-visible { display:block; }
+    #chronicle-header {
+      display:flex; align-items:center; justify-content:space-between;
+      margin-bottom:10px;
+    }
+    #chronicle-section-label {
+      font-size:9px; letter-spacing:3px; color:var(--gold); text-transform:uppercase;
+      border-bottom:1px solid #3a2a10; padding-bottom:4px; flex:1;
+    }
+    #chronicle-new-dot {
+      display:none; width:7px; height:7px; border-radius:50%;
+      background:var(--gold); margin-left:10px; margin-bottom:3px;
+      animation:chronicle-pulse 1.4s ease-in-out infinite alternate;
+    }
+    #chronicle-new-dot.show { display:inline-block; }
+    @keyframes chronicle-pulse { from { opacity:1; box-shadow:0 0 4px #e8b830; } to { opacity:0.4; box-shadow:none; } }
+    #chronicle-list {
+      max-height:260px; overflow-y:auto;
+      scrollbar-width:thin; scrollbar-color:#3a2a10 transparent;
+    }
+    #chronicle-list::-webkit-scrollbar { width:4px; }
+    #chronicle-list::-webkit-scrollbar-track { background:transparent; }
+    #chronicle-list::-webkit-scrollbar-thumb { background:#3a2a10; border-radius:2px; }
+    .chronicle-entry {
+      display:flex; align-items:baseline; gap:10px;
+      padding:6px 0; border-bottom:1px solid #150018;
+      font-size:11px; line-height:1.5;
+    }
+    .chronicle-entry:last-child { border-bottom:none; }
+    .chronicle-entry.new { animation:chronicle-slide-in 0.35s ease-out; }
+    @keyframes chronicle-slide-in { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:none; } }
+    .chr-year { font-size:9px; color:var(--text-lo); letter-spacing:1px; flex-shrink:0; min-width:36px; }
+    .chr-icon { font-size:12px; flex-shrink:0; }
+    .chr-msg  { color:var(--text-mid); flex:1; }
+    .chronicle-entry.kill     .chr-msg { color:#e05555; }
+    .chronicle-entry.death    .chr-msg { color:#aa3344; }
+    .chronicle-entry.level    .chr-msg { color:#5599dd; }
+    .chronicle-entry.encounter .chr-msg { color:#55aa66; }
+    #chronicle-empty {
+      font-size:11px; color:var(--text-dim); padding:6px 0; letter-spacing:0.5px;
     }
 
     /* Not found */
@@ -278,7 +326,7 @@
       font-size:10px; letter-spacing:1.5px; color:var(--text-lo);
       margin-top:6px;
     }
-    #mood-badge .mood-emoji { font-size:13px; }
+    #mood-badge .mood-emoji { font-size:11px; color:var(--purple-dim); }
     #mood-badge .mood-label { color:var(--text-mid); }
 
     /* ── Age badge ── */
@@ -439,6 +487,17 @@
       <div>
         <div class="stat-section-label">Personal Chronicle</div>
         <div id="hero-log"></div>
+      </div>
+    </div>
+
+    <!-- Private Chronicle (owner only) -->
+    <div id="private-chronicle">
+      <div id="chronicle-header">
+        <div id="chronicle-section-label">★ Private Chronicle</div>
+        <span id="chronicle-new-dot" title="New entry"></span>
+      </div>
+      <div id="chronicle-list">
+        <div id="chronicle-empty">Loading your chronicle…</div>
       </div>
     </div>
 
@@ -706,6 +765,7 @@
 
   let _prevPresenceTierName = null;
   let _prevViewers = 0;
+  let _presenceNudgeSent = false;
 
   function renderPresence(hero) {
     const presence  = hero.presence || 0;
@@ -778,6 +838,13 @@
       showViewerJoinMsg(`Presence ascends: ${tier.name}`, tier.color);
     }
     _prevPresenceTierName = tier.name;
+
+    // First-arrival nudge — show once per page load to make causal link legible
+    if (!_presenceNudgeSent && presence > 0) {
+      _presenceNudgeSent = true;
+      const atkBonus = presence >= 90 ? 35 : presence >= 60 ? 20 : presence >= 30 ? 10 : 2;
+      setTimeout(() => showViewerJoinMsg(`Your gaze reaches them. +${atkBonus}% ATK`, '#9a60c8'), 1200);
+    }
   }
 
   const INVOKE_COST_CLIENT = 40;
@@ -859,17 +926,24 @@
         if (currentHero && msg.hero) {
           patchArena(msg.hero);
           processCombatEvents(msg.combatEvents);
-          // Update non-arena parts
           render(msg.hero, msg.viewers, msg.world);
         } else {
           render(msg.hero, msg.viewers, msg.world);
         }
+        updateChronicleVisibility();
       } else if (msg.type === 'hero-event') {
-        // Cross-hero encounter notification on this hero's page
-        if (msg.event && msg.event.type === 'encounter') {
-          const other = (msg.event.heroNames || []).find(n => n !== (currentHero && currentHero.name)) || 'another soul';
-          const toneLabel = msg.event.tone === 'legendary' ? '✸ Legendary encounter' : msg.event.tone === 'familiar' ? '◈ Familiar face' : '◈ Crossed paths';
+        const ev = msg.event;
+        if (ev && ev.type === 'encounter') {
+          // Public encounter toast
+          const other = (ev.heroNames || []).find(n => n !== (currentHero && currentHero.name)) || 'another soul';
+          const toneLabel = ev.tone === 'legendary' ? '✸ Legendary encounter' : ev.tone === 'familiar' ? '◈ Familiar face' : '◈ Crossed paths';
           showViewerJoinMsg(`${toneLabel} — ${other.split(' ')[0]}`, '#8050c0');
+        } else if (ev && ev.type === 'chronicle-entry') {
+          // Private chronicle live push — only visible to owner
+          const claim = getClaim();
+          if (claim && currentHero && claim.heroName === currentHero.name) {
+            prependChronicleEntry(ev.entry);
+          }
         }
       } else if (msg.type === 'viewers') {
         const n = msg.viewers || 0;
@@ -969,6 +1043,92 @@
     });
   }
   window.copyLink = copyLink;
+
+  // ── Private Chronicle ────────────────────────────────────
+  const CHR_ICONS = { kill:'⚔', death:'†', level:'★', encounter:'◈' };
+
+  let _chronicleLoaded = false;
+  let _chronicleEntries = [];
+
+  function renderChronicle(entries, animate) {
+    const listEl  = document.getElementById('chronicle-list');
+    const emptyEl = document.getElementById('chronicle-empty');
+    if (!listEl) return;
+    _chronicleEntries = entries || [];
+    if (_chronicleEntries.length === 0) {
+      listEl.innerHTML = '';
+      if (!emptyEl || !listEl.contains(emptyEl)) {
+        const e = document.createElement('div');
+        e.id = 'chronicle-empty';
+        e.textContent = 'No entries yet. Your deeds will be recorded here.';
+        listEl.appendChild(e);
+      }
+      return;
+    }
+    listEl.innerHTML = _chronicleEntries.map((entry, i) => {
+      const cls = animate && i === 0 ? ' new' : '';
+      const icon = CHR_ICONS[entry.type] || '◈';
+      return `<div class="chronicle-entry ${entry.type || ''}${cls}">
+        <span class="chr-year">Yr${entry.year || '?'}</span>
+        <span class="chr-icon">${icon}</span>
+        <span class="chr-msg">${entry.msg || ''}</span>
+      </div>`;
+    }).join('');
+  }
+
+  function prependChronicleEntry(entry) {
+    if (!entry) return;
+    _chronicleEntries.unshift(entry);
+    if (_chronicleEntries.length > 50) _chronicleEntries.pop();
+    renderChronicle(_chronicleEntries, true);
+    // Flash the new-entry dot for 4s
+    const dot = document.getElementById('chronicle-new-dot');
+    if (dot) {
+      dot.classList.add('show');
+      clearTimeout(_dotTimer);
+      _dotTimer = setTimeout(() => dot.classList.remove('show'), 4000);
+    }
+    // Scroll to top
+    const listEl = document.getElementById('chronicle-list');
+    if (listEl) listEl.scrollTop = 0;
+  }
+  let _dotTimer = null;
+
+  async function loadChronicle() {
+    const claim = getClaim();
+    if (!claim) return;
+    try {
+      const res = await fetch('/api/hero/chronicle', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ heroName: claim.heroName, claimToken: claim.claimToken })
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      _chronicleLoaded = true;
+      renderChronicle(data.chronicle || [], false);
+    } catch(e) {
+      // silently ignore — chronicle is a bonus feature
+    }
+  }
+
+  // Show/hide the private chronicle panel when owner status is known
+  function updateChronicleVisibility() {
+    const claim = getClaim();
+    const isOwner = claim && currentHero && claim.heroName === currentHero.name;
+    const panel = document.getElementById('private-chronicle');
+    if (!panel) return;
+    if (isOwner) {
+      panel.classList.add('owner-visible');
+      if (!_chronicleLoaded) loadChronicle();
+    } else {
+      panel.classList.remove('owner-visible');
+    }
+  }
+
+  // Patch render() to also update chronicle visibility
+  const _origRender = render;
+  // We can't easily patch render since it's defined as a named function —
+  // instead, call updateChronicleVisibility from the SSE message handler below.
 
   // Also init share URL to current location slug right away (before SSE arrives)
   setShareUrl(rawParam);

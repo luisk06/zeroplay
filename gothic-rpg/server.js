@@ -120,14 +120,14 @@ const WOUNDED_RECOVERY_TICKS  = 300;
 // Each hero gets 2 traits at spawn that permanently colour their behaviour.
 // `desc` is shown in the claim ceremony overlay.
 const TRAITS = {
-  reckless:    { label:'Reckless',     desc:'Charges without hesitation. Fights more, flees less.',        engage: +0.03,  flee: -0.08,  loot: 0,     xp: 0,    log: ['charges forward heedlessly','hurls themselves at the foe'] },
-  cautious:    { label:'Cautious',     desc:'Watches before striking. Survives by knowing when to run.',   engage: -0.02,  flee: +0.06,  loot: 0,     xp: 0,    log: ['watches from the shadows first','edges forward warily'] },
-  greedy:      { label:'Greedy',       desc:'Eyes always on the prize. Finds more loot than most.',        engage: 0,      flee: 0,      loot:+0.003, xp: 0,    log: ['rummages through the ruins','pockets everything in reach'] },
-  bloodthirsty:{ label:'Bloodthirsty', desc:'Craves the kill. Earns more from every slain foe.',           engage: +0.02,  flee: -0.05,  loot: 0,     xp:+0.10, log: ['thirsts for another kill','fights with savage relish'] },
-  cowardly:    { label:'Cowardly',     desc:'Fear is a survival tool. Retreats early, but stays alive.',   engage: -0.03,  flee: +0.10,  loot: 0,     xp:-0.05, log: ['flinches at the sight of the enemy','hesitates at the threshold'] },
-  tenacious:   { label:'Tenacious',    desc:'Refuses to yield. Holds the line when others would break.',   engage: +0.01,  flee: -0.06,  loot: 0,     xp:+0.05, log: ['refuses to yield','grits their teeth and presses on'] },
-  scholarly:   { label:'Scholarly',    desc:'Knowledge is power. Learns faster and finds hidden things.',  engage: 0,      flee: 0,      loot:+0.002, xp:+0.15, log: ['studies the creature\'s weaknesses','recites the old battle-lore'] },
-  cursed:      { label:'Cursed',       desc:'Something draws them toward danger. They cannot explain it.',  engage: +0.02,  flee: 0,      loot:-0.001, xp: 0,    log: ['is drawn toward danger by some dark compulsion','moves as if guided by an unseen hand'] },
+  reckless:    { label:'Reckless',     desc:'Charges without hesitation. Fights more, flees less.',        engage: +0.03,  flee: -0.08,  loot: 0,     xp: 0,    log: ['charging forward heedlessly','hurling themselves at the foe'] },
+  cautious:    { label:'Cautious',     desc:'Watches before striking. Survives by knowing when to run.',   engage: -0.02,  flee: +0.06,  loot: 0,     xp: 0,    log: ['watching from the shadows first','edging forward warily'] },
+  greedy:      { label:'Greedy',       desc:'Eyes always on the prize. Finds more loot than most.',        engage: 0,      flee: 0,      loot:+0.003, xp: 0,    log: ['rummaging through the ruins after','pocketing everything in reach'] },
+  bloodthirsty:{ label:'Bloodthirsty', desc:'Craves the kill. Earns more from every slain foe.',           engage: +0.02,  flee: -0.05,  loot: 0,     xp:+0.10, log: ['thirsting for another kill','fighting with savage relish'] },
+  cowardly:    { label:'Cowardly',     desc:'Fear is a survival tool. Retreats early, but stays alive.',   engage: -0.03,  flee: +0.10,  loot: 0,     xp:-0.05, log: ['flinching at the last moment','hesitating at the threshold before striking'] },
+  tenacious:   { label:'Tenacious',    desc:'Refuses to yield. Holds the line when others would break.',   engage: +0.01,  flee: -0.06,  loot: 0,     xp:+0.05, log: ['refusing to yield even a step','gritting their teeth to the end'] },
+  scholarly:   { label:'Scholarly',    desc:'Knowledge is power. Learns faster and finds hidden things.',  engage: 0,      flee: 0,      loot:+0.002, xp:+0.15, log: ['studying the creature\'s weaknesses first','reciting old battle-lore under their breath'] },
+  cursed:      { label:'Cursed',       desc:'Something draws them toward danger. They cannot explain it.',  engage: +0.02,  flee: 0,      loot:-0.001, xp: 0,    log: ['drawn toward danger by some dark compulsion','moving as if guided by an unseen hand'] },
 };
 const TRAIT_KEYS = Object.keys(TRAITS);
 
@@ -144,11 +144,11 @@ function traitLog(h)        { const logs = (h.traits || []).flatMap(k => TRAITS[
 
 // ── Hero Emotional State ──────────────────────────────────────────────────────
 const MOODS = {
-  resolute:   { label:'Resolute',   emoji:'⚔', desc:'Steady and unshaken.' },
-  haunted:    { label:'Haunted',    emoji:'👁', desc:'Dark memories linger.' },
-  vengeful:   { label:'Vengeful',   emoji:'🔥', desc:'Burning for retribution.' },
-  weary:      { label:'Weary',      emoji:'💤', desc:'The road has taken its toll.' },
-  triumphant: { label:'Triumphant', emoji:'✨', desc:'Riding high on victory.' },
+  resolute:   { label:'Resolute',   emoji:'◈', desc:'Steady and unshaken.' },
+  haunted:    { label:'Haunted',    emoji:'◉', desc:'Dark memories linger.' },
+  vengeful:   { label:'Vengeful',   emoji:'✦', desc:'Burning for retribution.' },
+  weary:      { label:'Weary',      emoji:'—', desc:'The road has taken its toll.' },
+  triumphant: { label:'Triumphant', emoji:'✸', desc:'Riding high on victory.' },
 };
 const MOOD_KEYS = Object.keys(MOODS);
 
@@ -233,6 +233,30 @@ function encounterKey(a, b) {
   return [a.name, b.name].sort().join('|');
 }
 
+// ── Private Chronicle ─────────────────────────────────────────────────────────
+// Per-hero diary visible only to the owner. Never broadcast via SSE or snapshot.
+// Entries written at key moments only when the owner is actively watching.
+// Max 50 entries (oldest dropped when full).
+const PRIVATE_LOG_MAX = 50;
+
+function ownerIsWatching(h) {
+  // True if the hero has a claim token AND at least one hero-page SSE connection is open
+  return !!h.claimToken && (heroClients.get(h.name)?.size || 0) > 0;
+}
+
+function addPrivateLog(h, type, msg) {
+  if (!h.privateLog) h.privateLog = [];
+  h.privateLog.unshift({ type, msg, year: W.year, tick: W.tick, ts: Date.now() });
+  if (h.privateLog.length > PRIVATE_LOG_MAX) h.privateLog.pop();
+
+  // Push the new entry live to the owner's open SSE connection
+  const set = heroClients.get(h.name);
+  if (set && set.size) {
+    const evt = `data: ${JSON.stringify({ type:'hero-event', event: { type:'chronicle-entry', entry: h.privateLog[0] } })}\n\n`;
+    for (const res of set) { try { res.write(evt); } catch(e) { set.delete(res); } }
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  World state
 // ─────────────────────────────────────────────────────────────────────────────
@@ -280,6 +304,7 @@ function serializeWorld(w) {
       forsaken: h.forsaken || false,
       lastActiveDay: h.lastActiveDay || null,
       presenceHistory: h.presenceHistory || [],
+      privateLog: h.privateLog || [],   // persisted but never broadcast
     })),
     enemies: w.enemies.map(e => ({
       id:e.id, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,
@@ -398,6 +423,7 @@ function spawnHero(forceBlonde) {
     traits,
     mood: 'resolute', moodText: MOODS.resolute.desc,
     bornYear: W.year || 1,
+    privateLog: [],
   });
 }
 
@@ -463,6 +489,27 @@ function defeatHero(h) {
     addLog(`Kael the Stranger has fallen and lies wounded!${penalty}`, 'death');
   } else {
     addLog(`${firstName(h)} was defeated and crawls away to recover.${penalty}`, 'death');
+  }
+
+  // Private chronicle — defeat (always recorded for claimed heroes)
+  if (h.claimToken) {
+    const fallNum = h.falls;
+    const watching = ownerIsWatching(h);
+    const defeatMsgs = {
+      watching: [
+        `You watched ${firstName(h)} fall for the first time. They will rise.`,
+        `You were there when ${firstName(h)} fell again. Fall ${fallNum}. The wounds run deep.`,
+        `Fall ${fallNum}. You watched it happen. ${firstName(h)} grows haunted.`,
+      ],
+      away: [
+        `${firstName(h)} fell while you were away. They survived. Barely.`,
+        `While you were gone, ${firstName(h)} was defeated again. Fall ${fallNum}.`,
+        `Fall ${fallNum} happened without you. ${firstName(h)} wonders if you'll return.`,
+      ],
+    };
+    const pool = watching ? defeatMsgs.watching : defeatMsgs.away;
+    const msg  = fallNum === 1 ? pool[0] : fallNum <= 4 ? pool[1] : pool[2];
+    addPrivateLog(h, 'defeat', msg);
   }
 }
 
@@ -530,9 +577,14 @@ function updateHero(h) {
       pendingCombatEvents.push({ heroName:h.name, type:'enemy-hit' });
       if (h.target.hp <= 0) {
         const tier = h.target.tier || 1;
-        const suffix = tier >= 4 ? ' — a mighty victory!' : tier === 3 ? ' — a hard-won fight.' : '!';
         const tl = traitLog(h);
-        addLog(`${firstName(h)} slew ${h.target.name}${suffix}${tl ? ` ${tl}.` : ''}`, 'combat');
+        // Trait phrase joins as a participial clause: "Varoth slew Troll — a mighty victory, charging forward heedlessly."
+        const suffix = tier >= 4
+          ? (tl ? ` — a mighty victory, ${tl}.` : ' — a mighty victory!')
+          : tier === 3
+          ? (tl ? ` — a hard-won fight, ${tl}.` : ' — a hard-won fight.')
+          : (tl ? `, ${tl}.` : '!');
+        addLog(`${firstName(h)} slew ${h.target.name}${suffix}`, 'combat');
         const baseXp = h.target.xpReward;
         // Aged hero bonus XP
         const ageBonus = heroAge(h) >= HERO_AGE_THRESHOLD ? 1.15 : 1;
@@ -544,11 +596,31 @@ function updateHero(h) {
         if (h.mood !== 'vengeful') setMood(h, 'triumphant');
         // Milestone check after stats update
         checkMilestones(h);
+        // Private chronicle — kill entry (owner watching only)
+        if (ownerIsWatching(h)) {
+          const killNum = h.kills;
+          const killMsgs = [
+            `You were watching when ${firstName(h)} claimed their first kill.`,
+            `You saw ${firstName(h)} fight and win again. Kill ${killNum}.`,
+            `${firstName(h)} is becoming something. You watched kill ${killNum}.`,
+            `The ${h.target ? h.target.name : 'enemy'} fell while you watched. Kill ${killNum}.`,
+          ];
+          const msg = killNum === 1 ? killMsgs[0] : killNum <= 5 ? killMsgs[1] : killNum % 10 === 0 ? killMsgs[2] : killMsgs[3];
+          addPrivateLog(h, 'kill', msg);
+        }
         if (h.xp >= h.level * 15) {
           h.level++; h.xp -= h.level * 15;
           h.maxhp += 5 + rng(5); h.hp = Math.min(h.hp + 10, h.maxhp); h.atk++;
           addLog(`${firstName(h)} reached Level ${h.level}!`, 'level');
           checkMilestones(h);
+          // Private chronicle — level-up (always, owner or not — milestone worth recording)
+          if (h.claimToken) {
+            const lvlMsgs = [
+              `${firstName(h)} reached Level ${h.level} while you were away.`,
+              `You were here when ${firstName(h)} reached Level ${h.level}. They grow stronger.`,
+            ];
+            addPrivateLog(h, 'level', ownerIsWatching(h) ? lvlMsgs[1] : lvlMsgs[0]);
+          }
         }
       }
     }
@@ -919,6 +991,19 @@ function tickEncounters() {
         if (!set || !set.size) continue;
         const evtMsg = `data: ${JSON.stringify({ type:'hero-event', event: encounterEvt })}\n\n`;
         for (const res of set) { try { res.write(evtMsg); } catch(e) { set.delete(res); } }
+      }
+
+      // Private Chronicle — write encounter entry for each claimed hero
+      const toneLabel = tone === 'legendary' ? 'legendary encounter' : tone === 'familiar' ? 'familiar face' : 'encounter';
+      if (a.claimToken) {
+        const other = firstName(b);
+        const suffix = tone === 'legendary' ? ` The ${count + 1} meeting of legends.` : tone === 'familiar' ? ` You have crossed paths ${count + 1} times now.` : '';
+        addPrivateLog(a, 'encounter', `You crossed paths with ${other} in the ${W.region || 'dark lands'}.${suffix}`);
+      }
+      if (b.claimToken) {
+        const other = firstName(a);
+        const suffix = tone === 'legendary' ? ` The ${count + 1} meeting of legends.` : tone === 'familiar' ? ` You have crossed paths ${count + 1} times now.` : '';
+        addPrivateLog(b, 'encounter', `You crossed paths with ${other} in the ${W.region || 'dark lands'}.${suffix}`);
       }
     }
   }
@@ -1316,6 +1401,17 @@ app.post('/api/hero/retire', publicRateLimit, (req, res) => {
   res.json({ ok:true });
 });
 
+// Fetch private chronicle (owner only)
+app.post('/api/hero/chronicle', publicRateLimit, (req, res) => {
+  const { heroName, claimToken } = req.body;
+  const hero = findHeroBySlugOrName(heroName);
+  if (!hero || !hero.claimToken) return res.status(404).json({ error: 'Hero not found' });
+  if (hero.claimToken !== claimToken) return res.status(403).json({ error: 'Invalid token' });
+  hero.lastActiveDay = utcDayStamp();
+  hero.forsaken = false;
+  res.json({ ok: true, chronicle: hero.privateLog || [] });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Admin endpoints (protected)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1685,6 +1781,7 @@ async function boot() {
       forsaken: h.forsaken || false,
       lastActiveDay: h.lastActiveDay || null,
       presenceHistory: h.presenceHistory || [],
+      privateLog: h.privateLog || [],
     }));
     W.enemies = (saved.enemies || []).map(e => ({
       id:enemyIdCounter++, name:e.name, hp:e.hp, maxhp:e.maxhp, atk:e.atk,
