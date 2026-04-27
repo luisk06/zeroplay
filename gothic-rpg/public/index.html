@@ -2226,13 +2226,13 @@
     }
   }
 
-  function ceremonyClear() {
+  window.ceremonyClear = function() {
     document.getElementById('ceremony-overlay').classList.remove('show');
     _ceremonyPreviewToken = null;
     _ceremonyHeroName     = null;
-  }
+  };
 
-  async function ceremonyBind() {
+  window.ceremonyBind = async function() {
     if (!_ceremonyPreviewToken) return;
     const bindBtn = document.getElementById('ceremony-bind');
     const errEl   = document.getElementById('ceremony-error');
